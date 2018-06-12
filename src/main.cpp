@@ -20,6 +20,8 @@ using std::endl;
 using std::string;
 using std::stringstream;
 
+static char WHEELS[] = {'|', '/', '-', '\\'};
+typedef std::map<std::string, string> http_headers;
 
 static bool _get_options(int argc, char **argv, string &stream, string &hwid, string &name)
 {
@@ -87,6 +89,32 @@ class Curl {
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
 
 		read_json(body, resp);
+		return code;
+	}
+	long Post(const http_headers &headers, const string &data, ptree &resp)
+	{
+		stringstream body;
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &_write_sstream);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data.c_str());
+
+		struct curl_slist *chunk = NULL;
+		for (auto item : headers) {
+			string header = item.first + ": " + item.second;
+			chunk = curl_slist_append(chunk, header.c_str());
+		}
+
+		if (chunk)
+			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+
+		curl_easy_perform(curl);
+
+		if (chunk)
+			curl_slist_free_all(chunk);
+		long code;
+		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+		read_json(body, resp);
+
 		return code;
 	}
 	private:
@@ -202,6 +230,55 @@ static std::tuple<string, string, string> _create_cert(const string &stream)
 	return std::make_tuple(device_uuid, pkey, csr);
 }
 
+static string _get_oauth_token(const string &device_uuid)
+{
+	ptree json;
+	string data = "client_id=" + device_uuid;
+	std::map<string, string> headers;
+
+	long code = Curl("https://foundries.io/oauth/authorization/device/").Post(headers, data, json);
+	if (code != 200) {
+		cerr << "Unable to create device authorization request: HTTP_" << code << endl;
+		exit(EXIT_FAILURE);
+	}
+
+	cout << endl;
+	cout << "----------------------------------------------------------------------------" << endl;
+	cout << "Visit the link below in your browser to authorize this new device. This link" << endl;
+	cout << "will expire in " << (json.get<int>("expires_in") / 60) << " minutes." << endl;
+	cout << "  Device Name: " << device_uuid << endl;
+	cout << "  User code: " << json.get<string>("user_code") << endl;
+	cout << "  Browser URL: " << json.get<string>("verification_uri") << endl;
+	cout << endl;
+
+	data = "grant_type=urn:ietf:params:oauth:grant-type:device_code";
+	data += "&device_code=" + json.get<string>("device_code");
+	data += "&client_id=" + device_uuid;
+
+	string msg;
+	int i=0, interval = json.get<int>("interval");
+
+	while (true) {
+		long code = Curl("https://foundries.io/oauth/token/").Post(headers, data, json);
+		if(code == 200) {
+			return json.get<string>("access_token");
+		} else if (code == 400) {
+			if (json.get<string>("error") == "authorization_pending") {
+				cout << "Waiting for authorization ";
+				cout << WHEELS[i++ % sizeof(WHEELS)] << "\r" << std::flush;
+				sleep(interval);
+			} else {
+				cerr << "Error authorizing device: ";
+				cerr << json.get<string>("error_description") << endl;
+				exit(EXIT_FAILURE);
+			}
+		}
+		else {
+			cout << "HTTP(" << code << ") error. Pausing for 2 seconds" << endl;
+			sleep(2);
+		}
+	}
+}
 
 int main(int argc, char **argv)
 {
@@ -217,6 +294,7 @@ int main(int argc, char **argv)
 
 	string device_uuid, pkey, csr;
 	std::tie(device_uuid, pkey, csr) = _create_cert(stream);
+	string token = _get_oauth_token(device_uuid);
 
 	return EXIT_SUCCESS;
 }
