@@ -1,3 +1,5 @@
+#include <fcntl.h>
+
 #include <curl/curl.h>
 #include <ostree-1/ostree.h>
 
@@ -5,6 +7,7 @@
 #include <sstream>
 #include <string>
 
+#include <boost/beast/core/detail/base64.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
 #include <boost/property_tree/json_parser.hpp>
@@ -151,7 +154,8 @@ static string _get_hwid(const string &stream)
 		}
 	}
 
-	cerr << "Unable to find this ostree image in the TUF targets list." << endl;
+	cerr << "Unable to find this ostree image(" << hash << ") in the TUF targets list: ";
+	cerr << url  << endl;
 	exit(EXIT_FAILURE);
 }
 
@@ -280,6 +284,19 @@ static string _get_oauth_token(const string &device_uuid)
 	}
 }
 
+static void _assert_permissions()
+{
+	const char *test_file = "/var/sota/.test";
+	int fd = open(test_file, O_WRONLY | O_CREAT  | O_TRUNC);
+	if (fd < 0) {
+		cerr << "Unable to write to /var/sota. Please run as root" << endl;
+		exit(EXIT_FAILURE);
+	}
+	close(fd);
+	unlink(test_file);
+
+}
+
 int main(int argc, char **argv)
 {
 	string stream, hwid, name;
@@ -292,9 +309,39 @@ int main(int argc, char **argv)
 		cout << "Probed hardware ID as " << hwid << endl;
 	}
 
+	_assert_permissions();
+
 	string device_uuid, pkey, csr;
 	std::tie(device_uuid, pkey, csr) = _create_cert(stream);
 	string token = _get_oauth_token(device_uuid);
+
+	http_headers headers;
+	headers["Content-type"] = "application/json";
+	headers["Authorization"] = "Bearer " + boost::beast::detail::base64_encode(token);
+
+	ptree device;
+	device.put("name", name);
+	device.put("uuid", device_uuid);
+	device.put("csr", csr);
+	device.put("hardware-id", hwid);
+	stringstream data;
+	write_json(data, device);
+
+	ptree resp;
+	long code = Curl("https://api.foundries.io/lmp/devices/").Post(headers, data.str(), resp);
+	if (code != 201) {
+		cerr << "Unable to create device: HTTP_" << code << endl;
+		exit(EXIT_FAILURE);
+	}
+	std::ofstream out("/var/sota/pkey.pem");
+	out << pkey;
+	out.close();
+	for (auto it: resp) {
+		std::ofstream out("/var/sota/" + it.first);
+		out << it.second.data();
+		out.close();
+	}
+	cout << "Device is now registered." << endl;
 
 	return EXIT_SUCCESS;
 }
