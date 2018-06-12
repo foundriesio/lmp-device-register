@@ -5,9 +5,12 @@
 #include <sstream>
 #include <string>
 
+#include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
 
 namespace po = boost::program_options;
 using boost::property_tree::ptree;
@@ -124,6 +127,82 @@ static string _get_hwid(const string &stream)
 	exit(EXIT_FAILURE);
 }
 
+class TempDir {
+	public:
+	TempDir() {
+		path = (boost::filesystem::temp_directory_path() / boost::filesystem::unique_path()).native();
+		if (mkdir(path.c_str(), S_IRWXU) == -1) {
+			cerr << "Could not create temporary directory at " << path << endl;
+			exit(EXIT_FAILURE);
+		}
+	}
+	~TempDir() {
+		boost::filesystem::remove_all(path);
+	}
+	const string &GetPath() {return path;}
+
+	private:
+	string path;
+};
+
+
+static string _spawn(const string& cmd_line)
+{
+	g_autofree GError *error = nullptr;
+	g_autofree gchar *stdout_buff = nullptr;
+	gint status;
+
+	if(!g_spawn_command_line_sync(cmd_line.c_str(), &stdout_buff, NULL, &status, &error)) {
+		cerr << "Unable to run: " << cmd_line << endl;
+		cerr << "Error is: " << error->message << endl;
+		exit(EXIT_FAILURE);
+	}
+	if(error) {
+		cerr << "Unable to run: " << cmd_line << endl;
+		cerr << "STDERR is: " << stderr << endl;
+		exit(EXIT_FAILURE);
+	}
+	return stdout_buff;
+}
+
+
+static std::tuple<string, string, string> _create_cert(const string &stream)
+{
+	TempDir tmp_dir;
+	string pkey = _spawn("openssl ecparam -genkey -name prime256v1");
+
+	// Create the private key
+	string pkey_file = tmp_dir.GetPath() + "/pkey.pem";
+	std::ofstream pkey_out(pkey_file);
+	pkey_out << pkey << endl;
+	pkey_out.close();
+
+	//Make key signing request
+	boost::uuids::uuid tmp = boost::uuids::random_generator()();
+	const string device_uuid = boost::uuids::to_string(tmp);
+
+	string csr = tmp_dir.GetPath() + "/device.csr";
+	string cnf = tmp_dir.GetPath() + "/device.cnf";
+	std::ofstream cnf_out(cnf);
+	cnf_out << "[req]" << endl;
+	cnf_out << "prompt = no" << endl;
+	cnf_out << "distinguished_name = dn" << endl;
+	cnf_out << "req_extensions = ext" << endl;
+	cnf_out << endl;
+	cnf_out << "[dn]" << endl;
+	cnf_out << "CN=" << device_uuid << endl;
+	cnf_out << "OU=" << stream << endl;
+	cnf_out << endl;
+	cnf_out << "[ext]" << endl;
+	cnf_out << "keyUsage=critical, digitalSignature" << endl;
+	cnf_out << "extendedKeyUsage=critical, clientAuth";
+	cnf_out.close();
+
+	csr = _spawn("openssl req -new -config " + cnf + " -key " + pkey_file);
+	return std::make_tuple(device_uuid, pkey, csr);
+}
+
+
 int main(int argc, char **argv)
 {
 	string stream, hwid, name;
@@ -135,6 +214,9 @@ int main(int argc, char **argv)
 		hwid = _get_hwid(stream);
 		cout << "Probed hardware ID as " << hwid << endl;
 	}
+
+	string device_uuid, pkey, csr;
+	std::tie(device_uuid, pkey, csr) = _create_cert(stream);
 
 	return EXIT_SUCCESS;
 }
