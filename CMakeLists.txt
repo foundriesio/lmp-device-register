@@ -19,3 +19,4 @@ set(CMAKE_CXX_STANDARD 11)
 
 add_executable(lmp-device-register src/main.cpp)
 target_link_libraries(lmp-device-register ${CURL_LIBRARIES} ${Boost_LIBRARIES} ${GLIB2_LIBRARIES} ${LIBOSTREE_LIBRARIES})
+install(TARGETS lmp-device-register RUNTIME DESTINATION bin)
