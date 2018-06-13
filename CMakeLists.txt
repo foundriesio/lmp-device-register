@@ -1,3 +1,7 @@
+# Copyright (c) 2018 Open Source Foundries Limited
+#
+# SPDX-License-Identifier: MIT
+
 cmake_minimum_required (VERSION 3.5)
 
 project(lmp-device-register)
