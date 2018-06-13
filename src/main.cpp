@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2018 Open Source Foundries Limited
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
 #include <fcntl.h>
 
 #include <curl/curl.h>
