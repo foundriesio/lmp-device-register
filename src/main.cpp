@@ -337,6 +337,12 @@ int main(int argc, char **argv)
 	long code = Curl("https://api.foundries.io/lmp/devices/").Post(headers, data.str(), resp);
 	if (code != 201) {
 		cerr << "Unable to create device: HTTP_" << code << endl;
+		if (resp.data().length()) {
+			cerr << resp.data() << endl;
+		}
+		for (auto it: resp) {
+			cerr << it.first << ": " << it.second.data() << endl;
+		}
 		exit(EXIT_FAILURE);
 	}
 	std::ofstream out("/var/sota/pkey.pem");
