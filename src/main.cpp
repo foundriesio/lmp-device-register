@@ -75,8 +75,11 @@ static size_t _write_sstream(void *buffer, size_t size, size_t nmemb, void *user
 }
 
 class Curl {
+	private:
+	string _url;
 	public:
 	Curl(const string &url) {
+		_url = url;
 		curl_global_init(CURL_GLOBAL_DEFAULT);
 		curl = curl_easy_init();
 		if (curl)
@@ -86,6 +89,14 @@ class Curl {
 		if(curl)
 			curl_easy_cleanup(curl);
 		curl_global_cleanup();
+	}
+	void ParseResponse(stringstream &body, ptree &resp) {
+		try {
+			read_json(body, resp);
+		} catch(const boost::property_tree::json_parser::json_parser_error &e) {
+			cerr << "Unable to parse response from: " << _url << " Error is:"<< endl;
+			cerr << " " <<  e.message() << endl;
+		}
 	}
 	long GetJson(ptree &resp)
 	{
@@ -97,7 +108,7 @@ class Curl {
 		long code;
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
 
-		read_json(body, resp);
+		ParseResponse(body, resp);
 		return code;
 	}
 	long Post(const http_headers &headers, const string &data, ptree &resp)
@@ -122,8 +133,7 @@ class Curl {
 			curl_slist_free_all(chunk);
 		long code;
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
-		read_json(body, resp);
-
+		ParseResponse(body, resp);
 		return code;
 	}
 	private:
