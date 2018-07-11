@@ -259,7 +259,7 @@ static string _get_oauth_token(const string &device_uuid)
 	if (getenv("OAUTH_BASE"))
 		url = getenv("OAUTH_BASE");
 	else
-		url = "https://foundries.io/oauth";
+		url = "https://app.foundries.io/oauth";
 
 	long code = Curl(url + "/authorization/device/").Post(headers, data, json);
 	if (code != 200) {
