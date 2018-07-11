@@ -255,8 +255,13 @@ static string _get_oauth_token(const string &device_uuid)
 	ptree json;
 	string data = "client_id=" + device_uuid;
 	std::map<string, string> headers;
+	string url;
+	if (getenv("OAUTH_BASE"))
+		url = getenv("OAUTH_BASE");
+	else
+		url = "https://foundries.io/oauth";
 
-	long code = Curl("https://foundries.io/oauth/authorization/device/").Post(headers, data, json);
+	long code = Curl(url + "/authorization/device/").Post(headers, data, json);
 	if (code != 200) {
 		cerr << "Unable to create device authorization request: HTTP_" << code << endl;
 		exit(EXIT_FAILURE);
@@ -279,7 +284,7 @@ static string _get_oauth_token(const string &device_uuid)
 	int i=0, interval = json.get<int>("interval");
 
 	while (true) {
-		long code = Curl("https://foundries.io/oauth/token/").Post(headers, data, json);
+		long code = Curl(url + "/token/").Post(headers, data, json);
 		if(code == 200) {
 			return json.get<string>("access_token");
 		} else if (code == 400) {
