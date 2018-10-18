@@ -308,7 +308,7 @@ static string _get_oauth_token(const string &device_uuid)
 static void _assert_permissions()
 {
 	const char *test_file = "/var/sota/.test";
-	int fd = open(test_file, O_WRONLY | O_CREAT  | O_TRUNC);
+	int fd = open(test_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
 	if (fd < 0) {
 		cerr << "Unable to write to /var/sota. Please run as root" << endl;
 		exit(EXIT_FAILURE);
