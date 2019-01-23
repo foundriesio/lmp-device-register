@@ -40,7 +40,7 @@ static bool _get_options(int argc, char **argv, string &stream, string &hwid, st
 
 		("hwid,i", po::value<string>(&hwid),
 		 "The hardware-id of the device. If not provided the script will look for"
-		 "the current ostree sha in the tufrepo and find the hardware-id frm that.")
+		 "the current ostree sha in the tufrepo and find the hardware-id from that.")
 
 		("stream,s", po::value<string>(&stream)->default_value("release"),
 		 "The update stream to subscribe to: release, postmerge, premerge.")
