@@ -13,6 +13,7 @@
 #include <sstream>
 #include <string>
 
+#include <boost/algorithm/string.hpp>
 #include <boost/beast/core/detail/base64.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
@@ -32,8 +33,16 @@ using std::stringstream;
 static char WHEELS[] = {'|', '/', '-', '\\'};
 typedef std::map<std::string, string> http_headers;
 
+static bool _validate_stream(const std::vector<string>& streams, const string& stream)
+{
+	return std::find(streams.begin(), streams.end(), stream) != streams.end();
+}
+
 static bool _get_options(int argc, char **argv, string &stream, string &hwid, string &name)
 {
+	std::vector<std::string> streams;
+	boost::split(streams, DEVICE_STREAMS, [](char c){return c == ',';});
+
 	po::options_description desc("lmp-device-register options");
 	desc.add_options()
 		("help", "print usage")
@@ -42,8 +51,8 @@ static bool _get_options(int argc, char **argv, string &stream, string &hwid, st
 		 "The hardware-id of the device. If not provided the script will look for"
 		 "the current ostree sha in the tufrepo and find the hardware-id from that.")
 
-		("stream,s", po::value<string>(&stream)->default_value("release"),
-		 "The update stream to subscribe to: release, postmerge, premerge.")
+		("stream,s", po::value<string>(&stream)->default_value(streams[0]),
+		 "The update stream to subscribe to: " DEVICE_STREAMS)
 
 		("name,n", po::value<string>(&name)->required(),
 		 "The name of the device as it should appear in the dashboard.");
@@ -56,7 +65,7 @@ static bool _get_options(int argc, char **argv, string &stream, string &hwid, st
 			return false;
 		}
 		po::notify(vm);
-		if (vm.count("stream") && stream != "release" && stream != "premerge" && stream != "postmerge") {
+		if (vm.count("stream") && !_validate_stream(streams, stream)) {
 			throw po::validation_error(po::validation_error::invalid_option_value, "--stream", stream);
 		}
 	} catch (const po::error &o) {

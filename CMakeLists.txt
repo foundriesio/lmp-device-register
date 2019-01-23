@@ -6,6 +6,12 @@ cmake_minimum_required (VERSION 3.5)
 
 project(lmp-device-register)
 
+IF (NOT DEFINED DEVICE_STREAMS)
+    SET(DEVICE_STREAMS "release,premerge")
+ENDIF()
+ADD_DEFINITIONS(-DDEVICE_STREAMS="${DEVICE_STREAMS}")
+message(STATUS "Setting DEVICE_STREAMS to ${DEVICE_STREAMS}")
+
 add_definitions('-g')
 add_definitions('-Wall')
 
