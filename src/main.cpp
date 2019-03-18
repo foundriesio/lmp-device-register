@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2018 Open Source Foundries Limited
+ * Copyright (c) 2019 Foundries.io
  *
  * SPDX-License-Identifier: MIT
  */
@@ -30,6 +31,15 @@ using std::endl;
 using std::string;
 using std::stringstream;
 
+static const string sota_config_dir = "/var/sota";
+
+// OpenSSL works with object labels, while aktualizr works with IDs.
+static const string hsm_token_label = "aktualizr";
+static const string hsm_tls_key_id = "01";           // TLS key ID on HSM, when used (for sota.toml)
+static const string hsm_client_cert_id = "03";       // Client certificate's ID on HSM, when used (for sota.toml)
+static const string hsm_tls_key_label = "tls";       // TLS key label on HSM, when used (for OpenSSL)
+static const string hsm_client_cert_label = "client"; // Uptane key label on HSM, when used (for OpenSSL)
+
 static char WHEELS[] = {'|', '/', '-', '\\'};
 typedef std::map<std::string, string> http_headers;
 
@@ -38,7 +48,7 @@ static bool _validate_stream(const std::vector<string>& streams, const string& s
 	return std::find(streams.begin(), streams.end(), stream) != streams.end();
 }
 
-static bool _get_options(int argc, char **argv, string &stream, string &hwid, string &name)
+static bool _get_options(int argc, char **argv, string &stream, string &hwid, string &uuid, string &name, string &hsm_module, string &hsm_so_pin, string &hsm_pin)
 {
 	std::vector<std::string> streams;
 	boost::split(streams, DEVICE_STREAMS, [](char c){return c == ',';});
@@ -47,15 +57,31 @@ static bool _get_options(int argc, char **argv, string &stream, string &hwid, st
 	desc.add_options()
 		("help", "print usage")
 
-		("hwid,i", po::value<string>(&hwid),
-		 "The hardware-id of the device. If not provided the script will look for"
-		 "the current ostree sha in the tufrepo and find the hardware-id from that.")
-
 		("stream,s", po::value<string>(&stream)->default_value(streams[0]),
 		 "The update stream to subscribe to: " DEVICE_STREAMS)
 
+		("hwid,i", po::value<string>(&hwid),
+		 "An identifier for the device's hardware type. If not provided, "
+		 "the current OSTree SHA in the TUF repo will be used to determine "
+		 "a value.")
+
+		("uuid,u", po::value<string>(&uuid),
+		 "A per-device UUID. If not provided, one will be generated. "
+		 "This is associated with the device, e.g. as the CommonName field "
+		 "in certificates related to it.")
+
 		("name,n", po::value<string>(&name)->required(),
-		 "The name of the device as it should appear in the dashboard.");
+		 "The name of the device as it should appear in the dashboard.")
+
+		("hsm-module,m", po::value<string>(&hsm_module),
+		 "The path to the PKCS#11 .so for the HSM, if using one.")
+
+		("hsm-so-pin,S", po::value<string>(&hsm_so_pin),
+		 "The PKCS#11 Security Officer PIN to set up on the HSM, if "
+		 "using one.")
+
+		("hsm-pin,P", po::value<string>(&hsm_pin),
+		 "The PKCS#11 PIN to set up on the HSM, if using one.");
 	po::variables_map vm;
 
 	try {
@@ -227,41 +253,137 @@ static string _spawn(const string& cmd_line)
 	return stdout_buff;
 }
 
+static void _pkcs11_tool(const string &module, const string &cmd)
+{
+	_spawn("pkcs11-tool --module " + module + " " + cmd);
+}
 
-static std::tuple<string, string, string> _create_cert(const string &stream)
+static void _pkcs11_tool(const string &module, const string &cmd, const string &pin)
+{
+	_pkcs11_tool(module, "--pin " + pin + " " + cmd);
+}
+
+static void _setenv(const char *name, const char *value)
+{
+	int rc = setenv(name, value, 1);
+
+	if (rc != 0) {
+		cerr << "failed to set " << name << ": " << strerror(errno) << endl;
+		exit(EXIT_FAILURE);
+	}
+}
+
+static void _unsetenv(const char *name)
+{
+	int rc = unsetenv(name);
+
+	if (rc != 0) {
+		cerr << "failed to set " << name << ": " << strerror(errno) << endl;
+		exit(EXIT_FAILURE);
+	}
+}
+
+// There are two flows:
+//
+// 1. If hsm_module_in is empty or null, file-based keys will be
+//    generated and used. Return value is (device_uuid, key_id,
+//    csr).
+//
+// 2. Otherwise, we initialize a token on the PKCS#11 HSM with label
+//    aktualizr, generate the keypair there (label tls, ID 01), and
+//    extract the public half. Return value is (device_uuid, key_file,
+//    csr).
+static std::tuple<string, string, string> _create_cert(const string &stream, const string &device_uuid, const string &hsm_module, const string &hsm_so_pin, const string &hsm_pin)
 {
 	TempDir tmp_dir;
-	string pkey = _spawn("openssl ecparam -genkey -name prime256v1");
+	string pkey;		// Private key data when no HSM used.
+	string pkey_file;	// Temporary file for private key when no HSM is used.
 
-	// Create the private key
-	string pkey_file = tmp_dir.GetPath() + "/pkey.pem";
-	std::ofstream pkey_out(pkey_file);
-	pkey_out << pkey << endl;
-	pkey_out.close();
+	// Create the key.
+	if (hsm_module.empty()) {
+		// Create a file-based key.
+		pkey = _spawn("openssl ecparam -genkey -name prime256v1");
+		pkey_file = tmp_dir.GetPath() + "/pkey.pem";
+		std::ofstream pkey_out(pkey_file);
+		pkey_out << pkey << endl;
+		pkey_out.close();
+	} else {
+		// Initialize the HSM and create a key in it.
+		_pkcs11_tool(hsm_module,
+			     "--init-token --label " + hsm_token_label +
+			     " --so-pin " + hsm_so_pin);
+		_pkcs11_tool(hsm_module,
+			     "--init-pin --token-label " + hsm_token_label +
+			     " --so-pin " + hsm_so_pin +
+			     " --pin " + hsm_pin);
+		_pkcs11_tool(hsm_module,
+			     "--keypairgen --key-type EC:prime256v1"
+			     " --token-label " + hsm_token_label +
+			     " --id " + hsm_tls_key_id +
+			     " --label " + hsm_tls_key_label,
+			     hsm_pin);
+	}
 
-	//Make key signing request
-	boost::uuids::uuid tmp = boost::uuids::random_generator()();
-	const string device_uuid = boost::uuids::to_string(tmp);
+	// Ensure a UUID is available.
+	string uuid;
+	if (device_uuid.empty()) {
+		boost::uuids::uuid tmp = boost::uuids::random_generator()();
+		uuid = boost::uuids::to_string(tmp);
+	} else {
+		uuid = device_uuid;
+	}
 
+	// Create a CSR.
 	string csr = tmp_dir.GetPath() + "/device.csr";
 	string cnf = tmp_dir.GetPath() + "/device.cnf";
 	std::ofstream cnf_out(cnf);
+	if (!hsm_module.empty()) {
+		cnf_out << "openssl_conf = oc" << endl;
+		cnf_out << endl;
+		cnf_out << "[oc]" << endl;
+		cnf_out << "engines = eng" << endl;
+		cnf_out << endl;
+		cnf_out << "[eng]" << endl;
+		cnf_out << "pkcs11 = p11" << endl;
+		cnf_out << endl;
+		cnf_out << "[p11]" << endl;
+		cnf_out << "engine_id = pkcs11" << endl;
+		cnf_out << "dynamic_path = /usr/lib/engines-1.1/pkcs11.so" << endl;
+		cnf_out << "MODULE_PATH = " << hsm_module << endl;
+		cnf_out << "PIN = " << hsm_pin << endl;
+		cnf_out << "init = 0" << endl;
+		cnf_out << endl;
+	}
 	cnf_out << "[req]" << endl;
 	cnf_out << "prompt = no" << endl;
 	cnf_out << "distinguished_name = dn" << endl;
 	cnf_out << "req_extensions = ext" << endl;
 	cnf_out << endl;
 	cnf_out << "[dn]" << endl;
-	cnf_out << "CN=" << device_uuid << endl;
+	cnf_out << "CN=" << uuid << endl;
 	cnf_out << "OU=" << stream << endl;
 	cnf_out << endl;
 	cnf_out << "[ext]" << endl;
 	cnf_out << "keyUsage=critical, digitalSignature" << endl;
-	cnf_out << "extendedKeyUsage=critical, clientAuth";
+	cnf_out << "extendedKeyUsage=critical, clientAuth" << endl;
 	cnf_out.close();
 
-	csr = _spawn("openssl req -new -config " + cnf + " -key " + pkey_file);
-	return std::make_tuple(device_uuid, pkey, csr);
+	if (hsm_module.empty()) {
+		csr = _spawn("openssl req -new -config " + cnf + " -key " + pkey_file);
+		return std::make_tuple(uuid, pkey, csr);
+	} else {
+		string key = "\"pkcs11:token=" + hsm_token_label +
+			";object=" + hsm_tls_key_label +
+			";type=private" +
+			";pin-value=" + hsm_pin + "\"";
+		// For some stupid reason, using OPENSSL_CONF in the
+		// environment works fine here, while using openssl
+		// req -new -config doesn't work with engines.
+		_setenv("OPENSSL_CONF", cnf.c_str());
+		csr = _spawn("openssl req -new -engine pkcs11 -keyform engine -key " + key);
+		_unsetenv("OPENSSL_CONF");
+		return std::make_tuple(uuid, hsm_tls_key_id, csr);
+	}
 }
 
 static string _get_oauth_token(const string &device_uuid)
@@ -321,34 +443,52 @@ static string _get_oauth_token(const string &device_uuid)
 
 static void _assert_permissions()
 {
-	const char *test_file = "/var/sota/.test";
-	int fd = open(test_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+	string test_file = sota_config_dir + "/.test";
+	int fd = open(test_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
 	if (fd < 0) {
-		cerr << "Unable to write to /var/sota. Please run as root" << endl;
+		cerr << "Unable to write to " << sota_config_dir << ". Please run as root" << endl;
 		exit(EXIT_FAILURE);
 	}
 	close(fd);
-	unlink(test_file);
+	unlink(test_file.c_str());
+}
 
+static bool ends_with(const std::string &s, const std::string &suffix)
+{
+	string::size_type ssz = s.size(), sufsz = suffix.size();
+	return ssz >= sufsz && s.compare(ssz - sufsz, sufsz, suffix) == 0;
 }
 
 int main(int argc, char **argv)
 {
-	string stream, hwid, name;
-	if (!_get_options(argc, argv, stream, hwid, name))
+	string stream, hwid, uuid, name, hsm_module, hsm_so_pin, hsm_pin;
+	if (!_get_options(argc, argv, stream, hwid, uuid, name, hsm_module, hsm_so_pin, hsm_pin))
 		return EXIT_FAILURE;
 
 	cout << "Registering device, " << name << ", to stream " << stream << "." << endl;
 	if (hwid.length() == 0) {
 		hwid = _get_hwid(stream);
-		cout << "Probed hardware ID as " << hwid << endl;
+		cout << "Probed hardware ID: " << hwid << endl;
+	}
+	if (!hsm_module.empty()) {
+		if (hsm_so_pin.empty() || hsm_pin.empty()) {
+			cerr << "--hsm-module given without both --hsm-so-pin and --hsm-pin" << endl;
+			return EXIT_FAILURE;
+		}
+	} else if (!hsm_so_pin.empty() || !hsm_pin.empty()) {
+		cerr << "--hsm-module missing but --hsm-so-pin and/or --hsm-pin given" << endl;
+		return EXIT_FAILURE;
 	}
 
 	_assert_permissions();
 
-	string device_uuid, pkey, csr;
-	std::tie(device_uuid, pkey, csr) = _create_cert(stream);
-	string token = _get_oauth_token(device_uuid);
+	string final_uuid, pkey, csr;
+	std::tie(final_uuid, pkey, csr) = _create_cert(stream, uuid, hsm_module, hsm_so_pin, hsm_pin);
+	if (uuid.empty()) {
+		cout << "Generated device UUID: " << final_uuid << endl;
+	}
+
+	string token = _get_oauth_token(final_uuid);
 
 	http_headers headers;
 	headers["Content-type"] = "application/json";
@@ -356,9 +496,15 @@ int main(int argc, char **argv)
 
 	ptree device;
 	device.put("name", name);
-	device.put("uuid", device_uuid);
+	device.put("uuid", final_uuid);
 	device.put("csr", csr);
 	device.put("hardware-id", hwid);
+	device.put("overrides.tls.pkey_source", "\"pkcs11\"");
+	device.put("overrides.tls.cert_source", "\"pkcs11\"");
+	device.put("overrides.storage.tls_pkey_path", "");
+	device.put("overrides.storage.tls_clientcert_path", "");
+	device.put("overrides.import.tls_pkey_path", "");
+	device.put("overrides.import.tls_clientcert_path", "");
 	stringstream data;
 	write_json(data, device);
 
@@ -374,13 +520,41 @@ int main(int argc, char **argv)
 		}
 		exit(EXIT_FAILURE);
 	}
-	std::ofstream out("/var/sota/pkey.pem");
-	out << pkey;
-	out.close();
-	for (auto it: resp) {
-		std::ofstream out("/var/sota/" + it.first);
-		out << it.second.data();
+	if (hsm_module.empty()) {
+		// If the private key is meant to be a file, put it in the right place.
+		std::ofstream out(sota_config_dir + "/pkey.pem");
+		out << pkey;
 		out.close();
+	}
+	for (auto it: resp) {
+		string name = sota_config_dir + "/" + it.first;
+		std::ofstream out(name);
+
+		out << it.second.data();
+
+		if (!hsm_module.empty() && ends_with(name, ".toml")) {
+			// We additionally write the entire p11 section. (We can't tell the server
+			// the PIN, and don't want to parse/modify TOML to add it, so just write
+			// the whole thing.)
+			out << endl;
+			out << "[p11]" << endl;
+			out << "module = \"" << hsm_module << "\"" << endl;
+			out << "pass = \"" << hsm_pin << "\"" << endl;
+			out << "tls_pkey_id = \"" << hsm_tls_key_id << "\"" << endl;
+			out << "tls_clientcert_id = \"" << hsm_client_cert_id << "\"" << endl;
+			out << endl;
+		}
+
+		out.close();
+
+		if (!hsm_module.empty() && ends_with(name, ".pem")) {
+			// The client cert is now saved on disk, but  needs to be stored in
+			// the HSM. The copy we leave in sota_config_dir is just a "courtesy".
+			TempDir tmp_dir;
+			string client_der = tmp_dir.GetPath() + "/client.der";
+			_spawn("openssl x509 -inform pem -in " + name + " -out " + client_der);
+			_pkcs11_tool(hsm_module, "-w " + client_der + " -y cert --id " + hsm_client_cert_id, hsm_pin);
+		}
 	}
 	cout << "Device is now registered." << endl;
 
