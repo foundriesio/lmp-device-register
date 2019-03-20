@@ -207,16 +207,21 @@ static string _spawn(const string& cmd_line)
 {
 	g_autofree GError *error = nullptr;
 	g_autofree gchar *stdout_buff = nullptr;
+	g_autofree gchar *stderr_buff = nullptr;
 	gint status;
 
-	if(!g_spawn_command_line_sync(cmd_line.c_str(), &stdout_buff, NULL, &status, &error)) {
+	if (!g_spawn_command_line_sync(cmd_line.c_str(), &stdout_buff, &stderr_buff, &status, &error)) {
 		cerr << "Unable to run: " << cmd_line << endl;
 		cerr << "Error is: " << error->message << endl;
 		exit(EXIT_FAILURE);
 	}
-	if(error) {
+	if (status) {
 		cerr << "Unable to run: " << cmd_line << endl;
-		cerr << "STDERR is: " << stderr << endl;
+		cerr << "STDERR is: " << stderr_buff << endl;
+		exit(EXIT_FAILURE);
+	}
+	if (error) {
+		cerr << "Unable to run: " << cmd_line << endl;
 		exit(EXIT_FAILURE);
 	}
 	return stdout_buff;
