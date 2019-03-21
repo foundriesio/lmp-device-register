@@ -499,12 +499,14 @@ int main(int argc, char **argv)
 	device.put("uuid", final_uuid);
 	device.put("csr", csr);
 	device.put("hardware-id", hwid);
-	device.put("overrides.tls.pkey_source", "\"pkcs11\"");
-	device.put("overrides.tls.cert_source", "\"pkcs11\"");
-	device.put("overrides.storage.tls_pkey_path", "");
-	device.put("overrides.storage.tls_clientcert_path", "");
-	device.put("overrides.import.tls_pkey_path", "");
-	device.put("overrides.import.tls_clientcert_path", "");
+	if (!hsm_module.empty()) {
+		device.put("overrides.tls.pkey_source", "\"pkcs11\"");
+		device.put("overrides.tls.cert_source", "\"pkcs11\"");
+		device.put("overrides.storage.tls_pkey_path", "");
+		device.put("overrides.storage.tls_clientcert_path", "");
+		device.put("overrides.import.tls_pkey_path", "");
+		device.put("overrides.import.tls_clientcert_path", "");
+	}
 	stringstream data;
 	write_json(data, device);
 
