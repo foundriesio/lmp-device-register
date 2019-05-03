@@ -13,6 +13,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <regex>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/beast/core/detail/base64.hpp>
@@ -253,14 +254,14 @@ static string _spawn(const string& cmd_line)
 	return stdout_buff;
 }
 
-static void _pkcs11_tool(const string &module, const string &cmd)
+static string _pkcs11_tool(const string &module, const string &cmd)
 {
-	_spawn("pkcs11-tool --module " + module + " " + cmd);
+	return _spawn("pkcs11-tool --module " + module + " " + cmd);
 }
 
-static void _pkcs11_tool(const string &module, const string &cmd, const string &pin)
+static string _pkcs11_tool(const string &module, const string &cmd, const string &pin)
 {
-	_pkcs11_tool(module, "--pin " + pin + " " + cmd);
+	return _pkcs11_tool(module, "--pin " + pin + " " + cmd);
 }
 
 static void _setenv(const char *name, const char *value)
@@ -298,6 +299,7 @@ static std::tuple<string, string, string> _create_cert(const string &stream, con
 	TempDir tmp_dir;
 	string pkey;		// Private key data when no HSM used.
 	string pkey_file;	// Temporary file for private key when no HSM is used.
+	string uuid;
 
 	// Create the key.
 	if (hsm_module.empty()) {
@@ -325,12 +327,22 @@ static std::tuple<string, string, string> _create_cert(const string &stream, con
 	}
 
 	// Ensure a UUID is available.
-	string uuid;
-	if (device_uuid.empty()) {
+	if (!device_uuid.empty()) {
+		uuid = device_uuid;
+	} else if (!hsm_module.empty()) {
+		// Fetch from PKCS11 if available as part of the slot information
+		string slot_info = _pkcs11_tool(hsm_module, "--list-slots");
+		std::regex re("(Slot .*: )([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})");
+		std::smatch match;
+		std::regex_search(slot_info, match, re);
+		if (match.size() > 2) {
+			uuid = match.str(2);
+		}
+	}
+	// If UUID not available, generate one
+	if (uuid.empty()) {
 		boost::uuids::uuid tmp = boost::uuids::random_generator()();
 		uuid = boost::uuids::to_string(tmp);
-	} else {
-		uuid = device_uuid;
 	}
 
 	// Create a CSR.
@@ -485,7 +497,7 @@ int main(int argc, char **argv)
 	string final_uuid, pkey, csr;
 	std::tie(final_uuid, pkey, csr) = _create_cert(stream, uuid, hsm_module, hsm_so_pin, hsm_pin);
 	if (uuid.empty()) {
-		cout << "Generated device UUID: " << final_uuid << endl;
+		cout << "Device UUID: " << final_uuid << endl;
 	}
 
 	string token = _get_oauth_token(final_uuid);
