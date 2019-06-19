@@ -523,7 +523,7 @@ int main(int argc, char **argv)
 	write_json(data, device);
 
 	ptree resp;
-	long code = Curl("https://api.foundries.io/lmp/devices/").Post(headers, data.str(), resp);
+	long code = Curl(DEVICE_API).Post(headers, data.str(), resp);
 	if (code != 201) {
 		cerr << "Unable to create device: HTTP_" << code << endl;
 		if (resp.data().length()) {
