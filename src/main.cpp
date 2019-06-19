@@ -32,8 +32,6 @@ using std::endl;
 using std::string;
 using std::stringstream;
 
-static const string sota_config_dir = "/var/sota";
-
 // OpenSSL works with object labels, while aktualizr works with IDs.
 static const string hsm_token_label = "aktualizr";
 static const string hsm_tls_key_id = "01";           // TLS key ID on HSM, when used (for sota.toml)
@@ -49,7 +47,7 @@ static bool _validate_stream(const std::vector<string>& streams, const string& s
 	return std::find(streams.begin(), streams.end(), stream) != streams.end();
 }
 
-static bool _get_options(int argc, char **argv, string &stream, string &hwid, string &uuid, string &name, string &hsm_module, string &hsm_so_pin, string &hsm_pin)
+static bool _get_options(int argc, char **argv, string &stream, string &hwid, string &uuid, string &name, string &hsm_module, string &hsm_so_pin, string &hsm_pin, string &sota_config_dir)
 {
 	std::vector<std::string> streams;
 	boost::split(streams, DEVICE_STREAMS, [](char c){return c == ',';});
@@ -57,6 +55,9 @@ static bool _get_options(int argc, char **argv, string &stream, string &hwid, st
 	po::options_description desc("lmp-device-register options");
 	desc.add_options()
 		("help", "print usage")
+
+		("sota-dir,d", po::value<string>(&sota_config_dir)->default_value("/var/sota"),
+		 "The directory to install to keys and configuration to.")
 
 		("stream,s", po::value<string>(&stream)->default_value(streams[0]),
 		 "The update stream to subscribe to: " DEVICE_STREAMS)
@@ -455,7 +456,7 @@ static string _get_oauth_token(const string &device_uuid)
 	}
 }
 
-static void _assert_permissions()
+static void _assert_permissions(const string &sota_config_dir)
 {
 	string test_file = sota_config_dir + "/.test";
 	int fd = open(test_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
@@ -475,8 +476,8 @@ static bool ends_with(const std::string &s, const std::string &suffix)
 
 int main(int argc, char **argv)
 {
-	string stream, hwid, uuid, name, hsm_module, hsm_so_pin, hsm_pin;
-	if (!_get_options(argc, argv, stream, hwid, uuid, name, hsm_module, hsm_so_pin, hsm_pin))
+	string stream, hwid, uuid, name, hsm_module, hsm_so_pin, hsm_pin, sota_config_dir;
+	if (!_get_options(argc, argv, stream, hwid, uuid, name, hsm_module, hsm_so_pin, hsm_pin, sota_config_dir))
 		return EXIT_FAILURE;
 
 	cout << "Registering device, " << name << ", to stream " << stream << "." << endl;
@@ -494,7 +495,7 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	_assert_permissions();
+	_assert_permissions(sota_config_dir);
 
 	string final_uuid, pkey, csr;
 	std::tie(final_uuid, pkey, csr) = _create_cert(stream, uuid, hsm_module, hsm_so_pin, hsm_pin);
@@ -513,6 +514,7 @@ int main(int argc, char **argv)
 	device.put("uuid", final_uuid);
 	device.put("csr", csr);
 	device.put("hardware-id", hwid);
+	device.put("sota-config-dir", sota_config_dir);
 	if (!hsm_module.empty()) {
 		device.put("overrides.tls.pkey_source", "\"pkcs11\"");
 		device.put("overrides.tls.cert_source", "\"pkcs11\"");
