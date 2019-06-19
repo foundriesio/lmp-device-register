@@ -132,6 +132,8 @@ class Curl {
 		} catch(const boost::property_tree::json_parser::json_parser_error &e) {
 			cerr << "Unable to parse response from: " << _url << " Error is:"<< endl;
 			cerr << " " <<  e.message() << endl;
+			body.seekg(0);
+			cerr << "Raw response was: " << body.str() << endl;
 		}
 	}
 	long GetJson(ptree &resp)
