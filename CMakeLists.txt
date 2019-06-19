@@ -12,6 +12,12 @@ ENDIF()
 ADD_DEFINITIONS(-DDEVICE_STREAMS="${DEVICE_STREAMS}")
 message(STATUS "Setting DEVICE_STREAMS to ${DEVICE_STREAMS}")
 
+IF (NOT DEFINED DEVICE_API)
+    SET(DEVICE_API "https://api.foundries.io/lmp/devices/")
+ENDIF()
+ADD_DEFINITIONS(-DDEVICE_API="${DEVICE_API}")
+message(STATUS "Setting DEVICE_API to ${DEVICE_API}")
+
 add_definitions('-g')
 add_definitions('-Wall')
 
