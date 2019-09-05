@@ -504,10 +504,13 @@ int main(int argc, char **argv)
 	}
 
 	string token = _get_oauth_token(final_uuid);
+	string token_base64;
+	token_base64.resize(boost::beast::detail::base64::encoded_size(token.size()));
+	boost::beast::detail::base64::encode(&token_base64[0], token.data(), token.size());
 
 	http_headers headers;
 	headers["Content-type"] = "application/json";
-	headers["Authorization"] = "Bearer " + boost::beast::detail::base64_encode(token);
+	headers["Authorization"] = "Bearer " + token_base64;
 
 	ptree device;
 	device.put("name", name);
