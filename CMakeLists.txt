@@ -6,6 +6,12 @@ cmake_minimum_required (VERSION 3.5)
 
 project(lmp-device-register)
 
+option(AKLITE_TAGS "Set to ON to compile with support of aktualizr-lite tag filtering" OFF)
+if(AKLITE_TAGS)
+    add_definitions(-DAKLITE_TAGS)
+    message(STATUS "Enabling aktualir-lite tag support")
+endif(AKLITE_TAGS)
+
 IF (NOT DEFINED DEVICE_STREAMS)
     SET(DEVICE_STREAMS "release,premerge")
 ENDIF()

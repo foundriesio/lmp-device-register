@@ -51,6 +51,9 @@ struct Options {
 	string hsm_so_pin;
 	string hsm_pin;
 	string sota_config_dir;
+#ifdef AKLITE_TAGS
+	string pacman_tags;
+#endif
 };
 
 static bool _validate_stream(const std::vector<string>& streams, const string& stream)
@@ -72,7 +75,10 @@ static bool _get_options(int argc, char **argv, Options &options)
 
 		("stream,s", po::value<string>(&options.stream)->default_value(streams[0]),
 		 "The update stream to subscribe to: " DEVICE_STREAMS)
-
+#ifdef AKLITE_TAGS
+		("tags,t", po::value<string>(&options.pacman_tags),
+		 "Configure aktualizr-lite to only apply updates from Targets with these tags.")
+#endif
 		("hwid,i", po::value<string>(&options.hwid),
 		 "An identifier for the device's hardware type. If not provided, "
 		 "the current OSTree SHA in the TUF repo will be used to determine "
@@ -543,6 +549,11 @@ int main(int argc, char **argv)
 		device.put("overrides.import.tls_pkey_path", "");
 		device.put("overrides.import.tls_clientcert_path", "");
 	}
+#ifdef AKLITE_TAGS
+	if (!options.pacman_tags.empty()) {
+		device.put("overrides.pacman.tags", "\"" + options.pacman_tags + "\"");
+	}
+#endif
 	stringstream data;
 	write_json(data, device);
 
