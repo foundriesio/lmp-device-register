@@ -43,6 +43,7 @@ static char WHEELS[] = {'|', '/', '-', '\\'};
 typedef std::map<std::string, string> http_headers;
 
 struct Options {
+	string api_token;
 	string stream;
 	string hwid;
 	string uuid;
@@ -98,6 +99,9 @@ static bool _get_options(int argc, char **argv, Options &options)
 
 		("name,n", po::value<string>(&options.name)->required(),
 		 "The name of the device as it should appear in the dashboard.")
+
+		("api-token,T", po::value<string>(&options.api_token),
+		 "Use a foundries.io API token for authentication. If not specified, oauth2 will be used")
 
 		("hsm-module,m", po::value<string>(&options.hsm_module),
 		 "The path to the PKCS#11 .so for the HSM, if using one.")
@@ -533,14 +537,19 @@ int main(int argc, char **argv)
 		cout << "Device UUID: " << final_uuid << endl;
 	}
 
-	string token = _get_oauth_token(final_uuid);
-	string token_base64;
-	token_base64.resize(boost::beast::detail::base64::encoded_size(token.size()));
-	boost::beast::detail::base64::encode(&token_base64[0], token.data(), token.size());
-
 	http_headers headers;
 	headers["Content-type"] = "application/json";
-	headers["Authorization"] = "Bearer " + token_base64;
+
+	if (!options.api_token.empty()) {
+		headers["OSF-TOKEN"] = options.api_token;
+	} else {
+		string token = _get_oauth_token(final_uuid);
+		string token_base64;
+		token_base64.resize(boost::beast::detail::base64::encoded_size(token.size()));
+		boost::beast::detail::base64::encode(&token_base64[0], token.data(), token.size());
+
+		headers["Authorization"] = "Bearer " + token_base64;
+	}
 
 	ptree device;
 	device.put("name", options.name);
