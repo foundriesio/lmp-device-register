@@ -139,20 +139,20 @@ class Curl {
 			cerr << "Raw response was: " << body.str() << endl;
 		}
 	}
-	long GetJson(ptree &resp)
+	gint64 GetJson(ptree &resp)
 	{
 		stringstream body;
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &_write_sstream);
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
 
 		curl_easy_perform(curl);
-		long code;
+		gint64 code;
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
 
 		ParseResponse(body, resp);
 		return code;
 	}
-	long Post(const http_headers &headers, const string &data, ptree &resp)
+	gint64 Post(const http_headers &headers, const string &data, ptree &resp)
 	{
 		stringstream body;
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &_write_sstream);
@@ -174,7 +174,7 @@ class Curl {
 		if (chunk != nullptr) {
 			curl_slist_free_all(chunk);
 		}
-		long code;
+		gint64 code;
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
 		ParseResponse(body, resp);
 		return code;
@@ -202,7 +202,7 @@ static string _get_hwid(const string &stream)
 	ptree resp;
 	const string hash = _get_ostree_hash();
 	string url = "https://api.foundries.io/lmp/repo/" + stream + "/api/v1/user_repo/targets.json";
-	long status = Curl(url).GetJson(resp);
+	gint64 status = Curl(url).GetJson(resp);
 	if (status != 200) {
 		cerr << "Unable to get " << url << ": HTTP_" << status << endl;
 		exit(EXIT_FAILURE);
@@ -417,7 +417,7 @@ static string _get_oauth_token(const string &device_uuid)
 		url = "https://app.foundries.io/oauth";
 	}
 
-	long code = Curl(url + "/authorization/device/").Post(headers, data, json);
+	gint64 code = Curl(url + "/authorization/device/").Post(headers, data, json);
 	if (code != 200) {
 		cerr << "Unable to create device authorization request: HTTP_" << code << endl;
 		exit(EXIT_FAILURE);
@@ -440,7 +440,7 @@ static string _get_oauth_token(const string &device_uuid)
 	int i=0, interval = json.get<int>("interval");
 
 	while (true) {
-		long code = Curl(url + "/token/").Post(headers, data, json);
+		gint64 code = Curl(url + "/token/").Post(headers, data, json);
 		if(code == 200) {
 			return json.get<string>("access_token");
 		} else if (code == 400) {
@@ -536,7 +536,7 @@ int main(int argc, char **argv)
 	write_json(data, device);
 
 	ptree resp;
-	long code = Curl(DEVICE_API).Post(headers, data.str(), resp);
+	gint64 code = Curl(DEVICE_API).Post(headers, data.str(), resp);
 	if (code != 201) {
 		cerr << "Unable to create device: HTTP_" << code << endl;
 		if (resp.data().length() != 0) {
