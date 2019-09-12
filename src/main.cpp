@@ -93,7 +93,7 @@ static bool _get_options(int argc, char **argv, string &stream, string &hwid, st
 			return false;
 		}
 		po::notify(vm);
-		if (vm.count("stream") && !_validate_stream(streams, stream)) {
+		if (vm.count("stream") != 0 && !_validate_stream(streams, stream)) {
 			throw po::validation_error(po::validation_error::invalid_option_value, "--stream", stream);
 		}
 	} catch (const po::error &o) {
@@ -119,12 +119,14 @@ class Curl {
 		_url = url;
 		curl_global_init(CURL_GLOBAL_DEFAULT);
 		curl = curl_easy_init();
-		if (curl)
+		if (curl != nullptr) {
 			curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+		}
 	}
 	~Curl() {
-		if(curl)
+		if(curl != nullptr) {
 			curl_easy_cleanup(curl);
+		}
 		curl_global_cleanup();
 	}
 	void ParseResponse(stringstream &body, ptree &resp) {
@@ -137,40 +139,42 @@ class Curl {
 			cerr << "Raw response was: " << body.str() << endl;
 		}
 	}
-	long GetJson(ptree &resp)
+	gint64 GetJson(ptree &resp)
 	{
 		stringstream body;
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &_write_sstream);
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
 
 		curl_easy_perform(curl);
-		long code;
+		gint64 code;
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
 
 		ParseResponse(body, resp);
 		return code;
 	}
-	long Post(const http_headers &headers, const string &data, ptree &resp)
+	gint64 Post(const http_headers &headers, const string &data, ptree &resp)
 	{
 		stringstream body;
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &_write_sstream);
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data.c_str());
 
-		struct curl_slist *chunk = NULL;
+		struct curl_slist *chunk = nullptr;
 		for (auto item : headers) {
 			string header = item.first + ": " + item.second;
 			chunk = curl_slist_append(chunk, header.c_str());
 		}
 
-		if (chunk)
+		if (chunk != nullptr) {
 			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+		}
 
 		curl_easy_perform(curl);
 
-		if (chunk)
+		if (chunk != nullptr) {
 			curl_slist_free_all(chunk);
-		long code;
+		}
+		gint64 code;
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
 		ParseResponse(body, resp);
 		return code;
@@ -184,7 +188,7 @@ static string _get_ostree_hash()
 	g_autofree GError *error = nullptr;
 	g_autoptr(OstreeSysroot) sysroot = ostree_sysroot_new(nullptr);
 
-	if (!ostree_sysroot_load(sysroot, nullptr, &error)) {
+	if (ostree_sysroot_load(sysroot, nullptr, &error) == 0) {
 		cerr << "Unable to find OSTree repo: " << error->message << endl;
 		exit(EXIT_FAILURE);
 	}
@@ -198,7 +202,7 @@ static string _get_hwid(const string &stream)
 	ptree resp;
 	const string hash = _get_ostree_hash();
 	string url = "https://api.foundries.io/lmp/repo/" + stream + "/api/v1/user_repo/targets.json";
-	long status = Curl(url).GetJson(resp);
+	gint64 status = Curl(url).GetJson(resp);
 	if (status != 200) {
 		cerr << "Unable to get " << url << ": HTTP_" << status << endl;
 		exit(EXIT_FAILURE);
@@ -240,17 +244,17 @@ static string _spawn(const string& cmd_line)
 	g_autofree gchar *stderr_buff = nullptr;
 	gint status;
 
-	if (!g_spawn_command_line_sync(cmd_line.c_str(), &stdout_buff, &stderr_buff, &status, &error)) {
+	if (g_spawn_command_line_sync(cmd_line.c_str(), &stdout_buff, &stderr_buff, &status, &error) == 0) {
 		cerr << "Unable to run: " << cmd_line << endl;
 		cerr << "Error is: " << error->message << endl;
 		exit(EXIT_FAILURE);
 	}
-	if (status) {
+	if (status != 0) {
 		cerr << "Unable to run: " << cmd_line << endl;
 		cerr << "STDERR is: " << stderr_buff << endl;
 		exit(EXIT_FAILURE);
 	}
-	if (error) {
+	if (error != nullptr) {
 		cerr << "Unable to run: " << cmd_line << endl;
 		exit(EXIT_FAILURE);
 	}
@@ -407,12 +411,13 @@ static string _get_oauth_token(const string &device_uuid)
 	string data = "client_id=" + device_uuid;
 	std::map<string, string> headers;
 	string url;
-	if (getenv("OAUTH_BASE"))
+	if (getenv("OAUTH_BASE") != nullptr) {
 		url = getenv("OAUTH_BASE");
-	else
+	} else {
 		url = "https://app.foundries.io/oauth";
+	}
 
-	long code = Curl(url + "/authorization/device/").Post(headers, data, json);
+	gint64 code = Curl(url + "/authorization/device/").Post(headers, data, json);
 	if (code != 200) {
 		cerr << "Unable to create device authorization request: HTTP_" << code << endl;
 		exit(EXIT_FAILURE);
@@ -435,7 +440,7 @@ static string _get_oauth_token(const string &device_uuid)
 	int i=0, interval = json.get<int>("interval");
 
 	while (true) {
-		long code = Curl(url + "/token/").Post(headers, data, json);
+		gint64 code = Curl(url + "/token/").Post(headers, data, json);
 		if(code == 200) {
 			return json.get<string>("access_token");
 		} else if (code == 400) {
@@ -477,8 +482,9 @@ static bool ends_with(const std::string &s, const std::string &suffix)
 int main(int argc, char **argv)
 {
 	string stream, hwid, uuid, name, hsm_module, hsm_so_pin, hsm_pin, sota_config_dir;
-	if (!_get_options(argc, argv, stream, hwid, uuid, name, hsm_module, hsm_so_pin, hsm_pin, sota_config_dir))
+	if (!_get_options(argc, argv, stream, hwid, uuid, name, hsm_module, hsm_so_pin, hsm_pin, sota_config_dir)) {
 		return EXIT_FAILURE;
+	}
 
 	cout << "Registering device, " << name << ", to stream " << stream << "." << endl;
 	if (hwid.length() == 0) {
@@ -530,10 +536,10 @@ int main(int argc, char **argv)
 	write_json(data, device);
 
 	ptree resp;
-	long code = Curl(DEVICE_API).Post(headers, data.str(), resp);
+	gint64 code = Curl(DEVICE_API).Post(headers, data.str(), resp);
 	if (code != 201) {
 		cerr << "Unable to create device: HTTP_" << code << endl;
-		if (resp.data().length()) {
+		if (resp.data().length() != 0) {
 			cerr << resp.data() << endl;
 		}
 		for (auto it: resp) {
