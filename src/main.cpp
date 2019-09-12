@@ -54,6 +54,9 @@ struct Options {
 #ifdef AKLITE_TAGS
 	string pacman_tags;
 #endif
+#ifdef DOCKER_APPS
+	string docker_apps;
+#endif
 };
 
 static bool _validate_stream(const std::vector<string>& streams, const string& stream)
@@ -78,6 +81,10 @@ static bool _get_options(int argc, char **argv, Options &options)
 #ifdef AKLITE_TAGS
 		("tags,t", po::value<string>(&options.pacman_tags),
 		 "Configure aktualizr-lite to only apply updates from Targets with these tags.")
+#endif
+#ifdef DOCKER_APPS
+		("docker-apps,a", po::value<string>(&options.docker_apps),
+		 "Configure package-manage for this comma separate list of docker-apps.")
 #endif
 		("hwid,i", po::value<string>(&options.hwid),
 		 "An identifier for the device's hardware type. If not provided, "
@@ -552,6 +559,12 @@ int main(int argc, char **argv)
 #ifdef AKLITE_TAGS
 	if (!options.pacman_tags.empty()) {
 		device.put("overrides.pacman.tags", "\"" + options.pacman_tags + "\"");
+	}
+#endif
+#ifdef DOCKER_APPS
+	if (!options.docker_apps.empty()) {
+		device.put("overrides.pacman.type", "\"ostree+docker-app\"");
+		device.put("overrides.pacman.docker_apps", "\"" + options.docker_apps + "\"");
 	}
 #endif
 	stringstream data;
