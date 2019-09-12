@@ -93,7 +93,7 @@ static bool _get_options(int argc, char **argv, string &stream, string &hwid, st
 			return false;
 		}
 		po::notify(vm);
-		if (vm.count("stream") && !_validate_stream(streams, stream)) {
+		if (vm.count("stream") != 0 && !_validate_stream(streams, stream)) {
 			throw po::validation_error(po::validation_error::invalid_option_value, "--stream", stream);
 		}
 	} catch (const po::error &o) {
@@ -119,11 +119,11 @@ class Curl {
 		_url = url;
 		curl_global_init(CURL_GLOBAL_DEFAULT);
 		curl = curl_easy_init();
-		if (curl)
+		if (curl != nullptr)
 			curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
 	}
 	~Curl() {
-		if(curl)
+		if(curl != nullptr)
 			curl_easy_cleanup(curl);
 		curl_global_cleanup();
 	}
@@ -157,18 +157,18 @@ class Curl {
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data.c_str());
 
-		struct curl_slist *chunk = NULL;
+		struct curl_slist *chunk = nullptr;
 		for (auto item : headers) {
 			string header = item.first + ": " + item.second;
 			chunk = curl_slist_append(chunk, header.c_str());
 		}
 
-		if (chunk)
+		if (chunk != nullptr)
 			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
 
 		curl_easy_perform(curl);
 
-		if (chunk)
+		if (chunk != nullptr)
 			curl_slist_free_all(chunk);
 		long code;
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
@@ -184,7 +184,7 @@ static string _get_ostree_hash()
 	g_autofree GError *error = nullptr;
 	g_autoptr(OstreeSysroot) sysroot = ostree_sysroot_new(nullptr);
 
-	if (!ostree_sysroot_load(sysroot, nullptr, &error)) {
+	if (ostree_sysroot_load(sysroot, nullptr, &error) == 0) {
 		cerr << "Unable to find OSTree repo: " << error->message << endl;
 		exit(EXIT_FAILURE);
 	}
@@ -240,17 +240,17 @@ static string _spawn(const string& cmd_line)
 	g_autofree gchar *stderr_buff = nullptr;
 	gint status;
 
-	if (!g_spawn_command_line_sync(cmd_line.c_str(), &stdout_buff, &stderr_buff, &status, &error)) {
+	if (g_spawn_command_line_sync(cmd_line.c_str(), &stdout_buff, &stderr_buff, &status, &error) == 0) {
 		cerr << "Unable to run: " << cmd_line << endl;
 		cerr << "Error is: " << error->message << endl;
 		exit(EXIT_FAILURE);
 	}
-	if (status) {
+	if (status != 0) {
 		cerr << "Unable to run: " << cmd_line << endl;
 		cerr << "STDERR is: " << stderr_buff << endl;
 		exit(EXIT_FAILURE);
 	}
-	if (error) {
+	if (error != nullptr) {
 		cerr << "Unable to run: " << cmd_line << endl;
 		exit(EXIT_FAILURE);
 	}
@@ -407,7 +407,7 @@ static string _get_oauth_token(const string &device_uuid)
 	string data = "client_id=" + device_uuid;
 	std::map<string, string> headers;
 	string url;
-	if (getenv("OAUTH_BASE"))
+	if (getenv("OAUTH_BASE") != nullptr)
 		url = getenv("OAUTH_BASE");
 	else
 		url = "https://app.foundries.io/oauth";
@@ -533,7 +533,7 @@ int main(int argc, char **argv)
 	long code = Curl(DEVICE_API).Post(headers, data.str(), resp);
 	if (code != 201) {
 		cerr << "Unable to create device: HTTP_" << code << endl;
-		if (resp.data().length()) {
+		if (resp.data().length() != 0) {
 			cerr << resp.data() << endl;
 		}
 		for (auto it: resp) {
