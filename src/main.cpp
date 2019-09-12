@@ -119,12 +119,14 @@ class Curl {
 		_url = url;
 		curl_global_init(CURL_GLOBAL_DEFAULT);
 		curl = curl_easy_init();
-		if (curl != nullptr)
+		if (curl != nullptr) {
 			curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+		}
 	}
 	~Curl() {
-		if(curl != nullptr)
+		if(curl != nullptr) {
 			curl_easy_cleanup(curl);
+		}
 		curl_global_cleanup();
 	}
 	void ParseResponse(stringstream &body, ptree &resp) {
@@ -163,13 +165,15 @@ class Curl {
 			chunk = curl_slist_append(chunk, header.c_str());
 		}
 
-		if (chunk != nullptr)
+		if (chunk != nullptr) {
 			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+		}
 
 		curl_easy_perform(curl);
 
-		if (chunk != nullptr)
+		if (chunk != nullptr) {
 			curl_slist_free_all(chunk);
+		}
 		long code;
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
 		ParseResponse(body, resp);
@@ -407,10 +411,11 @@ static string _get_oauth_token(const string &device_uuid)
 	string data = "client_id=" + device_uuid;
 	std::map<string, string> headers;
 	string url;
-	if (getenv("OAUTH_BASE") != nullptr)
+	if (getenv("OAUTH_BASE") != nullptr) {
 		url = getenv("OAUTH_BASE");
-	else
+	} else {
 		url = "https://app.foundries.io/oauth";
+	}
 
 	long code = Curl(url + "/authorization/device/").Post(headers, data, json);
 	if (code != 200) {
@@ -477,8 +482,9 @@ static bool ends_with(const std::string &s, const std::string &suffix)
 int main(int argc, char **argv)
 {
 	string stream, hwid, uuid, name, hsm_module, hsm_so_pin, hsm_pin, sota_config_dir;
-	if (!_get_options(argc, argv, stream, hwid, uuid, name, hsm_module, hsm_so_pin, hsm_pin, sota_config_dir))
+	if (!_get_options(argc, argv, stream, hwid, uuid, name, hsm_module, hsm_so_pin, hsm_pin, sota_config_dir)) {
 		return EXIT_FAILURE;
+	}
 
 	cout << "Registering device, " << name << ", to stream " << stream << "." << endl;
 	if (hwid.length() == 0) {
