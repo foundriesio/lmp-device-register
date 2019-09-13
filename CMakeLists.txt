@@ -6,6 +6,19 @@ cmake_minimum_required (VERSION 3.5)
 
 project(lmp-device-register)
 
+option(AKLITE_TAGS "Set to ON to compile with support of aktualizr-lite tag filtering" OFF)
+if(AKLITE_TAGS)
+    add_definitions(-DAKLITE_TAGS)
+    message(STATUS "Enabling aktualir-lite tag support")
+endif(AKLITE_TAGS)
+
+option(DOCKER_APPS "Set to ON to compile with support for configuring docker-apps" OFF)
+if(DOCKER_APPS)
+    add_definitions(-DDOCKER_APPS)
+    message(STATUS "Enabling docker-apps support")
+endif(DOCKER_APPS)
+
+
 IF (NOT DEFINED DEVICE_STREAMS)
     SET(DEVICE_STREAMS "release,premerge")
 ENDIF()
