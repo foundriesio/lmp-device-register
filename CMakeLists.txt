@@ -36,6 +36,12 @@ ENDIF()
 ADD_DEFINITIONS(-DDEVICE_API="${DEVICE_API}")
 message(STATUS "Setting DEVICE_API to ${DEVICE_API}")
 
+IF (NOT DEFINED GIT_COMMIT)
+    SET(GIT_COMMIT "unknown")
+ENDIF()
+ADD_DEFINITIONS(-DGIT_COMMIT="${GIT_COMMIT}")
+message(STATUS "Setting GIT_COMMIT to ${GIT_COMMIT}")
+
 add_definitions('-g')
 add_definitions('-Wall')
 
