@@ -116,6 +116,7 @@ static bool _get_options(int argc, char **argv, Options &options)
 		po::store(po::parse_command_line(argc, reinterpret_cast<const char *const *>(argv), desc), vm);
 		if (vm.count("help") != 0u) {
 			cout << desc;
+			cout << "Git Commit " << GIT_COMMIT << endl;
 			return false;
 		}
 		po::notify(vm);
