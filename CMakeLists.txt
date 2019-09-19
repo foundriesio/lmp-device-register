@@ -18,6 +18,11 @@ if(DOCKER_APPS)
     message(STATUS "Enabling docker-apps support")
 endif(DOCKER_APPS)
 
+IF (NOT DEFINED HARDWARE_ID)
+    message(FATAL_ERROR "Missing required value: HARDWARE_ID")
+ENDIF()
+ADD_DEFINITIONS(-DHARDWARE_ID="${HARDWARE_ID}")
+message(STATUS "Setting HARDWARE_ID to ${HARDWARE_ID}")
 
 IF (NOT DEFINED DEVICE_STREAMS)
     SET(DEVICE_STREAMS "release,premerge")

@@ -87,10 +87,8 @@ static bool _get_options(int argc, char **argv, Options &options)
 		("docker-apps,a", po::value<string>(&options.docker_apps),
 		 "Configure package-manage for this comma separate list of docker-apps.")
 #endif
-		("hwid,i", po::value<string>(&options.hwid),
-		 "An identifier for the device's hardware type. If not provided, "
-		 "the current OSTree SHA in the TUF repo will be used to determine "
-		 "a value.")
+		("hwid,i", po::value<string>(&options.hwid)->default_value(HARDWARE_ID),
+		 "An identifier for the device's hardware type. Default is " HARDWARE_ID)
 
 		("uuid,u", po::value<string>(&options.uuid),
 		 "A per-device UUID. If not provided, one will be generated. "
@@ -167,19 +165,6 @@ class Curl {
 			cerr << "Raw response was: " << body.str() << endl;
 		}
 	}
-	gint64 GetJson(ptree &resp)
-	{
-		stringstream body;
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &_write_sstream);
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
-
-		curl_easy_perform(curl);
-		gint64 code;
-		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
-
-		ParseResponse(body, resp);
-		return code;
-	}
 	gint64 Post(const http_headers &headers, const string &data, ptree &resp)
 	{
 		stringstream body;
@@ -210,41 +195,6 @@ class Curl {
 	private:
 	CURL *curl = nullptr;
 };
-
-static string _get_ostree_hash()
-{
-	g_autofree GError *error = nullptr;
-	g_autoptr(OstreeSysroot) sysroot = ostree_sysroot_new(nullptr);
-
-	if (ostree_sysroot_load(sysroot, nullptr, &error) == 0) {
-		cerr << "Unable to find OSTree repo: " << error->message << endl;
-		exit(EXIT_FAILURE);
-	}
-
-	return ostree_deployment_get_csum(
-		ostree_sysroot_get_booted_deployment(sysroot));
-}
-
-static string _get_hwid(const string &stream)
-{
-	ptree resp;
-	const string hash = _get_ostree_hash();
-	string url = "https://api.foundries.io/lmp/repo/" + stream + "/api/v1/user_repo/targets.json";
-	gint64 status = Curl(url).GetJson(resp);
-	if (status != 200) {
-		cerr << "Unable to get " << url << ": HTTP_" << status << endl;
-		exit(EXIT_FAILURE);
-	}
-	for (ptree::value_type &target : resp.get_child("signed.targets")) {
-		if (hash == target.second.get_child("hashes").get<string>("sha256")) {
-			return target.second.get_child("custom.hardwareIds").front().second.get_value<string>();
-		}
-	}
-
-	cerr << "Unable to find this ostree image(" << hash << ") in the TUF targets list: ";
-	cerr << url  << endl;
-	exit(EXIT_FAILURE);
-}
 
 class TempDir {
 	public:
@@ -515,10 +465,6 @@ int main(int argc, char **argv)
 	}
 
 	cout << "Registering device, " << options.name << ", to stream " << options.stream << "." << endl;
-	if (options.hwid.length() == 0) {
-		options.hwid = _get_hwid(options.stream);
-		cout << "Probed hardware ID: " << options.hwid << endl;
-	}
 	if (!options.hsm_module.empty()) {
 		if (options.hsm_so_pin.empty() || options.hsm_pin.empty()) {
 			cerr << "--hsm-module given without both --hsm-so-pin and --hsm-pin" << endl;
