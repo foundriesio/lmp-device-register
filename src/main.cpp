@@ -192,7 +192,7 @@ class Curl {
 		if (chunk != nullptr) {
 			curl_slist_free_all(chunk);
 		}
-		gint64 code;
+		gint64 code = 0;
 		res = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
 		if (res != CURLE_OK) {
 			cerr << "Unable to get curl info: " << curl_easy_strerror(res) << endl;
