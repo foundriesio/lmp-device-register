@@ -184,7 +184,7 @@ class Curl {
 		}
 
 		CURLcode res = curl_easy_perform(curl);
-		if(res != CURLE_OK) {
+		if (res != CURLE_OK) {
 			cerr << "Unable to post to " << _url << ": " << curl_easy_strerror(res) << endl;
 			exit(1);
 		}
@@ -193,7 +193,11 @@ class Curl {
 			curl_slist_free_all(chunk);
 		}
 		gint64 code;
-		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+		res = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+		if (res != CURLE_OK) {
+			cerr << "Unable to get curl info: " << curl_easy_strerror(res) << endl;
+			exit(1);
+		}
 		ParseResponse(body, resp);
 		return code;
 	}
