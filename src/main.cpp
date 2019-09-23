@@ -183,7 +183,11 @@ class Curl {
 			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
 		}
 
-		curl_easy_perform(curl);
+		CURLcode res = curl_easy_perform(curl);
+		if(res != CURLE_OK) {
+			cerr << "Unable to post to " << _url << ": " << curl_easy_strerror(res) << endl;
+			exit(1);
+		}
 
 		if (chunk != nullptr) {
 			curl_slist_free_all(chunk);
