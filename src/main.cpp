@@ -526,10 +526,10 @@ int main(int argc, char **argv)
 	}
 #endif
 #ifdef DOCKER_APPS
+	string apps_root = options.sota_config_dir + "/docker-apps";
 	device.put("overrides.pacman.type", "\"ostree+docker-app\"");
 	device.put("overrides.pacman.docker_apps_root", "\"" + apps_root + "\"");
 	if (!options.docker_apps.empty()) {
-		string apps_root = options.sota_config_dir + "/docker-apps";
 		device.put("overrides.pacman.docker_apps", "\"" + options.docker_apps + "\"");
 	}
 #endif
