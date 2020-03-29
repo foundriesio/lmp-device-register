@@ -80,8 +80,13 @@ static bool _get_options(int argc, char **argv, Options &options)
 		("stream,s", po::value<string>(&options.stream)->default_value(streams[0]),
 		 "The update stream to subscribe to: " DEVICE_STREAMS)
 #ifdef AKLITE_TAGS
+#ifdef DEFAULT_TAG
+		("tags,t", po::value<string>(&options.pacman_tags)->default_value(DEFAULT_TAG),
+		 "Configure aktualizr-lite to only apply updates from Targets with these tags. Default is " DEFAULT_TAG)
+#else
 		("tags,t", po::value<string>(&options.pacman_tags),
 		 "Configure aktualizr-lite to only apply updates from Targets with these tags.")
+#endif
 #endif
 #ifdef DOCKER_APPS
 		("docker-apps,a", po::value<string>(&options.docker_apps),
