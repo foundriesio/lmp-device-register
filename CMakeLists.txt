@@ -10,6 +10,11 @@ option(AKLITE_TAGS "Set to ON to compile with support of aktualizr-lite tag filt
 if(AKLITE_TAGS)
     add_definitions(-DAKLITE_TAGS)
     message(STATUS "Enabling aktualir-lite tag support")
+
+    if (DEFINED DEFAULT_TAG)
+        add_definitions(-DDEFAULT_TAG="${DEFAULT_TAG}")
+        message(STATUS "Setting DEFAULT_TAG to ${DEFAULT_TAG}")
+    endif (DEFINED DEFAULT_TAG)
 endif(AKLITE_TAGS)
 
 option(DOCKER_APPS "Set to ON to compile with support for configuring docker-apps" OFF)
