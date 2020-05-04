@@ -8,7 +8,8 @@
 #include <fcntl.h>
 
 #include <curl/curl.h>
-#include <ostree-1/ostree.h>
+#include <glib.h>
+#include <sys/stat.h>
 
 #include <iostream>
 #include <sstream>
