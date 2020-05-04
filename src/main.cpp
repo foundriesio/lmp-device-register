@@ -62,7 +62,6 @@ struct Options {
 };
 
 static void _set_factory_option(std::string& factory) {
-	factory = DEVICE_FACTORY;
 	const char* device_factory_env_var = std::getenv("DEVICE_FACTORY");
 	if (device_factory_env_var != nullptr) {
 		cout << "Using the device factory specified via the environment variable: "
@@ -119,10 +118,16 @@ static bool _get_options(int argc, char **argv, Options &options)
 
 		("hsm-pin,P", po::value<string>(&options.hsm_pin),
 		 "The PKCS#11 PIN to set up on the HSM, if using one.");
-	po::variables_map vm;
 
+	po::options_description all_options("lmp-device-register all options");
+	all_options.add(desc);
+	all_options.add_options()
+		("stream,s", po::value<string>(&options.factory)->default_value(DEVICE_FACTORY),
+		 "The update factory to subscribe to: " DEVICE_FACTORY);
+
+	po::variables_map vm;
 	try {
-		po::store(po::parse_command_line(argc, reinterpret_cast<const char *const *>(argv), desc), vm);
+		po::store(po::parse_command_line(argc, reinterpret_cast<const char *const *>(argv), all_options), vm);
 		if (vm.count("help") != 0u) {
 			cout << desc;
 			cout << "Git Commit " << GIT_COMMIT << endl;
