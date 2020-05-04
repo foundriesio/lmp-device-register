@@ -61,6 +61,19 @@ struct Options {
 #endif
 };
 
+static void _set_factory_option(std::string& factory) {
+	factory = DEVICE_FACTORY;
+	const char* device_factory_env_var = std::getenv("DEVICE_FACTORY");
+	if (device_factory_env_var != nullptr) {
+		cout << "Using the device factory specified via the environment variable: "
+				 << device_factory_env_var << endl;
+		factory = device_factory_env_var;
+	}
+	if (factory.empty()) {
+		throw std::invalid_argument("Empty value of the device factory parameter");
+	}
+}
+
 static bool _get_options(int argc, char **argv, Options &options)
 {
 	po::options_description desc("lmp-device-register options");
@@ -116,10 +129,7 @@ static bool _get_options(int argc, char **argv, Options &options)
 			return false;
 		}
 		po::notify(vm);
-		options.factory = DEVICE_FACTORY;
-		if (options.factory.empty()) {
-			throw std::invalid_argument("Empty value of the device factory parameter");
-		}
+		_set_factory_option(options.factory);
 	} catch (const po::error &o) {
 		cout << "ERROR: " << o.what() << endl;
 		cout << endl << desc << endl;
