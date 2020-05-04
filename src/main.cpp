@@ -8,7 +8,8 @@
 #include <fcntl.h>
 
 #include <curl/curl.h>
-#include <ostree-1/ostree.h>
+#include <glib.h>
+#include <sys/stat.h>
 
 #include <iostream>
 #include <sstream>
@@ -585,8 +586,8 @@ int main(int argc, char **argv)
 			// the HSM. The copy we leave in sota_config_dir is just a "courtesy".
 			TempDir tmp_dir;
 			string client_der = tmp_dir.GetPath() + "/client.der";
-			_spawn("openssl x509 -inform pem -in " + name + " -out " + client_der);
-			_pkcs11_tool(options.hsm_module, "-w " + client_der + " -y cert --id " + hsm_client_cert_id, options.hsm_pin);
+			_spawn("openssl x509 -inform pem -in " + name + string(" -out ").append(client_der));
+			_pkcs11_tool(options.hsm_module, "-w " + client_der + string(" -y cert --id ").append(hsm_client_cert_id), options.hsm_pin);
 		}
 	}
 	cout << "Device is now registered." << endl;
