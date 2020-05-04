@@ -45,7 +45,7 @@ typedef std::map<std::string, string> http_headers;
 
 struct Options {
 	string api_token;
-	string stream;
+	string factory;
 	string hwid;
 	string uuid;
 	string name;
@@ -61,16 +61,8 @@ struct Options {
 #endif
 };
 
-static bool _validate_stream(const std::vector<string>& streams, const string& stream)
-{
-	return std::find(streams.begin(), streams.end(), stream) != streams.end();
-}
-
 static bool _get_options(int argc, char **argv, Options &options)
 {
-	std::vector<std::string> streams;
-	boost::split(streams, DEVICE_STREAMS, [](char c){return c == ',';});
-
 	po::options_description desc("lmp-device-register options");
 	desc.add_options()
 		("help", "print usage")
@@ -78,8 +70,6 @@ static bool _get_options(int argc, char **argv, Options &options)
 		("sota-dir,d", po::value<string>(&options.sota_config_dir)->default_value("/var/sota"),
 		 "The directory to install to keys and configuration to.")
 
-		("stream,s", po::value<string>(&options.stream)->default_value(streams[0]),
-		 "The update stream to subscribe to: " DEVICE_STREAMS)
 #ifdef AKLITE_TAGS
 #ifdef DEFAULT_TAG
 		("tags,t", po::value<string>(&options.pacman_tags)->default_value(DEFAULT_TAG),
@@ -126,8 +116,9 @@ static bool _get_options(int argc, char **argv, Options &options)
 			return false;
 		}
 		po::notify(vm);
-		if (vm.count("stream") != 0 && !_validate_stream(streams, options.stream)) {
-			throw po::validation_error(po::validation_error::invalid_option_value, "--stream", options.stream);
+		options.factory = DEVICE_FACTORY;
+		if (options.factory.empty()) {
+			throw std::invalid_argument("Empty value of the device factory parameter");
 		}
 	} catch (const po::error &o) {
 		cout << "ERROR: " << o.what() << endl;
@@ -373,7 +364,7 @@ static std::tuple<string, string, string> _create_cert(const Options &options)
 	cnf_out << endl;
 	cnf_out << "[dn]" << endl;
 	cnf_out << "CN=" << uuid << endl;
-	cnf_out << "OU=" << options.stream << endl;
+	cnf_out << "OU=" << options.factory << endl;
 	cnf_out << endl;
 	cnf_out << "[ext]" << endl;
 	cnf_out << "keyUsage=critical, digitalSignature" << endl;
@@ -479,7 +470,7 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	cout << "Registering device, " << options.name << ", to stream " << options.stream << "." << endl;
+	cout << "Registering device, " << options.name << ", to factory " << options.factory << "." << endl;
 	if (!options.hsm_module.empty()) {
 		if (options.hsm_so_pin.empty() || options.hsm_pin.empty()) {
 			cerr << "--hsm-module given without both --hsm-so-pin and --hsm-pin" << endl;
