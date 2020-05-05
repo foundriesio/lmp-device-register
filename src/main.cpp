@@ -45,7 +45,7 @@ typedef std::map<std::string, string> http_headers;
 
 struct Options {
 	string api_token;
-	string stream;
+	string factory;
 	string hwid;
 	string uuid;
 	string name;
@@ -61,16 +61,20 @@ struct Options {
 #endif
 };
 
-static bool _validate_stream(const std::vector<string>& streams, const string& stream)
-{
-	return std::find(streams.begin(), streams.end(), stream) != streams.end();
+static void _set_factory_option(std::string& factory) {
+	const char* device_factory_env_var = std::getenv("DEVICE_FACTORY");
+	if (device_factory_env_var != nullptr) {
+		cout << "Using the device factory specified via the environment variable: "
+				 << device_factory_env_var << endl;
+		factory = device_factory_env_var;
+	}
+	if (factory.empty()) {
+		throw std::invalid_argument("Empty value of the device factory parameter");
+	}
 }
 
 static bool _get_options(int argc, char **argv, Options &options)
 {
-	std::vector<std::string> streams;
-	boost::split(streams, DEVICE_STREAMS, [](char c){return c == ',';});
-
 	po::options_description desc("lmp-device-register options");
 	desc.add_options()
 		("help", "print usage")
@@ -78,8 +82,6 @@ static bool _get_options(int argc, char **argv, Options &options)
 		("sota-dir,d", po::value<string>(&options.sota_config_dir)->default_value("/var/sota"),
 		 "The directory to install to keys and configuration to.")
 
-		("stream,s", po::value<string>(&options.stream)->default_value(streams[0]),
-		 "The update stream to subscribe to: " DEVICE_STREAMS)
 #ifdef AKLITE_TAGS
 #ifdef DEFAULT_TAG
 		("tags,t", po::value<string>(&options.pacman_tags)->default_value(DEFAULT_TAG),
@@ -116,19 +118,23 @@ static bool _get_options(int argc, char **argv, Options &options)
 
 		("hsm-pin,P", po::value<string>(&options.hsm_pin),
 		 "The PKCS#11 PIN to set up on the HSM, if using one.");
-	po::variables_map vm;
 
+	po::options_description all_options("lmp-device-register all options");
+	all_options.add(desc);
+	all_options.add_options()
+		("stream,s", po::value<string>(&options.factory)->default_value(DEVICE_FACTORY),
+		 "The update factory to subscribe to: " DEVICE_FACTORY);
+
+	po::variables_map vm;
 	try {
-		po::store(po::parse_command_line(argc, reinterpret_cast<const char *const *>(argv), desc), vm);
+		po::store(po::parse_command_line(argc, reinterpret_cast<const char *const *>(argv), all_options), vm);
 		if (vm.count("help") != 0u) {
 			cout << desc;
 			cout << "Git Commit " << GIT_COMMIT << endl;
 			return false;
 		}
 		po::notify(vm);
-		if (vm.count("stream") != 0 && !_validate_stream(streams, options.stream)) {
-			throw po::validation_error(po::validation_error::invalid_option_value, "--stream", options.stream);
-		}
+		_set_factory_option(options.factory);
 	} catch (const po::error &o) {
 		cout << "ERROR: " << o.what() << endl;
 		cout << endl << desc << endl;
@@ -373,7 +379,7 @@ static std::tuple<string, string, string> _create_cert(const Options &options)
 	cnf_out << endl;
 	cnf_out << "[dn]" << endl;
 	cnf_out << "CN=" << uuid << endl;
-	cnf_out << "OU=" << options.stream << endl;
+	cnf_out << "OU=" << options.factory << endl;
 	cnf_out << endl;
 	cnf_out << "[ext]" << endl;
 	cnf_out << "keyUsage=critical, digitalSignature" << endl;
@@ -479,7 +485,7 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	cout << "Registering device, " << options.name << ", to stream " << options.stream << "." << endl;
+	cout << "Registering device, " << options.name << ", to factory " << options.factory << "." << endl;
 	if (!options.hsm_module.empty()) {
 		if (options.hsm_so_pin.empty() || options.hsm_pin.empty()) {
 			cerr << "--hsm-module given without both --hsm-so-pin and --hsm-pin" << endl;
