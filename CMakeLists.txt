@@ -60,12 +60,13 @@ set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake-modules)
 set(Boost_USE_STATIC_LIBS ON)
 find_package(Boost COMPONENTS filesystem program_options system REQUIRED)
 find_package(CURL REQUIRED)
-find_package(OSTree REQUIRED)
-include_directories(${LIBOSTREE_INCLUDE_DIRS})
+find_package(PkgConfig REQUIRED)
+pkg_search_module(GLIB REQUIRED glib-2.0)
 
 # Use C++11, but without GNU or other extensions
 set(CMAKE_CXX_STANDARD 11)
 
 add_executable(lmp-device-register src/main.cpp)
-target_link_libraries(lmp-device-register ${CURL_LIBRARIES} ${Boost_LIBRARIES} ${GLIB2_LIBRARIES} ${LIBOSTREE_LIBRARIES})
+target_include_directories(lmp-device-register PRIVATE ${GLIB_INCLUDE_DIRS})
+target_link_libraries(lmp-device-register ${CURL_LIBRARIES} ${Boost_LIBRARIES} ${GLIB_LDFLAGS})
 install(TARGETS lmp-device-register RUNTIME DESTINATION bin)
