@@ -18,10 +18,21 @@ if(AKLITE_TAGS)
 endif(AKLITE_TAGS)
 
 option(DOCKER_APPS "Set to ON to compile with support for configuring docker-apps" OFF)
+option(DOCKER_COMPOSE_APP "Set to ON to compile with support for configuring compose-apps" OFF)
+
+if(DOCKER_APPS AND DOCKER_COMPOSE_APP)
+  message(FATAL_ERROR "DOCKER_APPS and DOCKER_COMPOSE_APP cannot be ON for a single build")
+endif(DOCKER_APPS AND DOCKER_COMPOSE_APP)
+
 if(DOCKER_APPS)
     add_definitions(-DDOCKER_APPS)
     message(STATUS "Enabling docker-apps support")
 endif(DOCKER_APPS)
+
+if(DOCKER_COMPOSE_APP)
+    add_definitions(-DDOCKER_COMPOSE_APP)
+    message(STATUS "Enabling compose-apps support")
+endif(DOCKER_COMPOSE_APP)
 
 IF (NOT DEFINED HARDWARE_ID)
     message(FATAL_ERROR "Missing required value: HARDWARE_ID")

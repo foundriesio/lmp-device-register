@@ -56,8 +56,8 @@ struct Options {
 #ifdef AKLITE_TAGS
 	string pacman_tags;
 #endif
-#ifdef DOCKER_APPS
-	string docker_apps;
+#if defined DOCKER_APPS || defined DOCKER_COMPOSE_APP
+	string apps;
 #endif
 };
 
@@ -91,9 +91,9 @@ static bool _get_options(int argc, char **argv, Options &options)
 		 "Configure aktualizr-lite to only apply updates from Targets with these tags.")
 #endif
 #endif
-#ifdef DOCKER_APPS
-		("docker-apps,a", po::value<string>(&options.docker_apps),
-		 "Configure package-manage for this comma separate list of docker-apps.")
+#if defined DOCKER_APPS || defined DOCKER_COMPOSE_APP
+		("apps,a", po::value<string>(&options.apps),
+		 "Configure package-manage for this comma separate list of apps.")
 #endif
 		("hwid,i", po::value<string>(&options.hwid)->default_value(HARDWARE_ID),
 		 "An identifier for the device's hardware type. Default is " HARDWARE_ID)
@@ -541,8 +541,16 @@ int main(int argc, char **argv)
 	string apps_root = options.sota_config_dir + "/docker-apps";
 	device.put("overrides.pacman.type", "\"ostree+docker-app\"");
 	device.put("overrides.pacman.docker_apps_root", "\"" + apps_root + "\"");
-	if (!options.docker_apps.empty()) {
-		device.put("overrides.pacman.docker_apps", "\"" + options.docker_apps + "\"");
+	if (!options.apps.empty()) {
+		device.put("overrides.pacman.docker_apps", "\"" + options.apps + "\"");
+	}
+#endif
+#ifdef DOCKER_COMPOSE_APP
+	string apps_root = options.sota_config_dir + "/compose-apps";
+	device.put("overrides.pacman.type", "\"ostree+compose_apps\"");
+	device.put("overrides.pacman.compose_apps_root", "\"" + apps_root + "\"");
+	if (!options.apps.empty()) {
+		device.put("overrides.pacman.compose_apps", "\"" + options.apps + "\"");
 	}
 #endif
 	stringstream data;
