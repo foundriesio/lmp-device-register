@@ -404,7 +404,7 @@ static std::tuple<string, string, string> _create_cert(const Options &options)
 	}
 }
 
-static string _get_oauth_token(const string &device_uuid)
+static string _get_oauth_token(const string &factory, const string &device_uuid)
 {
 	ptree json;
 	string data = "client_id=" + device_uuid;
@@ -434,6 +434,7 @@ static string _get_oauth_token(const string &device_uuid)
 	data = "grant_type=urn:ietf:params:oauth:grant-type:device_code";
 	data += "&device_code=" + json.get<string>("device_code");
 	data += "&client_id=" + device_uuid;
+	data += "&scope=" + factory + ":devices:create";
 
 	string msg;
 	int i=0, interval = json.get<int>("interval");
@@ -510,7 +511,7 @@ int main(int argc, char **argv)
 	if (!options.api_token.empty()) {
 		headers["OSF-TOKEN"] = options.api_token;
 	} else {
-		string token = _get_oauth_token(final_uuid);
+		string token = _get_oauth_token(options.factory, final_uuid);
 		string token_base64;
 		token_base64.resize(boost::beast::detail::base64::encoded_size(token.size()));
 		boost::beast::detail::base64::encode(&token_base64[0], token.data(), token.size());
