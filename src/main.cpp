@@ -56,7 +56,7 @@ struct Options {
 #ifdef AKLITE_TAGS
 	string pacman_tags;
 #endif
-#if defined DOCKER_APPS || defined DOCKER_COMPOSE_APP
+#if defined DOCKER_COMPOSE_APP
 	string apps;
 #endif
 };
@@ -91,7 +91,7 @@ static bool _get_options(int argc, char **argv, Options &options)
 		 "Configure aktualizr-lite to only apply updates from Targets with these tags.")
 #endif
 #endif
-#if defined DOCKER_APPS || defined DOCKER_COMPOSE_APP
+#if defined DOCKER_COMPOSE_APP
 		("apps,a", po::value<string>(&options.apps),
 		 "Configure package-manage for this comma separate list of apps.")
 #endif
@@ -536,14 +536,6 @@ int main(int argc, char **argv)
 #ifdef AKLITE_TAGS
 	if (!options.pacman_tags.empty()) {
 		device.put("overrides.pacman.tags", "\"" + options.pacman_tags + "\"");
-	}
-#endif
-#ifdef DOCKER_APPS
-	string apps_root = options.sota_config_dir + "/docker-apps";
-	device.put("overrides.pacman.type", "\"ostree+docker-app\"");
-	device.put("overrides.pacman.docker_apps_root", "\"" + apps_root + "\"");
-	if (!options.apps.empty()) {
-		device.put("overrides.pacman.docker_apps", "\"" + options.apps + "\"");
 	}
 #endif
 #ifdef DOCKER_COMPOSE_APP
