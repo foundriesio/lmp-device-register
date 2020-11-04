@@ -53,6 +53,7 @@ struct Options {
 	string hsm_so_pin;
 	string hsm_pin;
 	string sota_config_dir;
+	bool start_daemon;
 #ifdef AKLITE_TAGS
 	string pacman_tags;
 #endif
@@ -108,6 +109,9 @@ static bool _get_options(int argc, char **argv, Options &options)
 
 		("api-token,T", po::value<string>(&options.api_token),
 		 "Use a foundries.io API token for authentication. If not specified, oauth2 will be used")
+
+		("start-daemon", po::value<bool>(&options.start_daemon)->default_value(true),
+		 "Start the aktlualizr-lite systemd service automatically after performing the registration.")
 
 		("hsm-module,m", po::value<string>(&options.hsm_module),
 		 "The path to the PKCS#11 .so for the HSM, if using one.")
@@ -628,6 +632,11 @@ int main(int argc, char **argv)
 		}
 	}
 	cout << "Device is now registered." << endl;
+
+	if (options.start_daemon) {
+		cout << "Starting aktualizr-lite daemon" << endl;
+		_spawn("systemctl start aktualizr-lite");
+	}
 
 	return EXIT_SUCCESS;
 }
