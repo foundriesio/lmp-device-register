@@ -482,6 +482,22 @@ static void _assert_not_registered(const string &sota_config_dir)
 	}
 }
 
+static void _assert_not_running() {
+	string out = _spawn("ps -ef");
+	size_t pos = 0;
+	while ((pos = out.find("\n")) != std::string::npos) {
+	    string line = out.substr(0, pos);
+	    if (line.find("aktualizr-lite") != std::string::npos) {
+	    	if (line.find("daemon") != std::string::npos) {
+	    		cerr << "ERROR: aktualizr-lite daemon appears to be running:" << endl;
+			cerr << line << endl;
+			exit(EXIT_FAILURE);
+		}
+	    }
+	    out.erase(0, pos + 1);
+	}
+}
+
 static bool ends_with(const std::string &s, const std::string &suffix)
 {
 	string::size_type ssz = s.size(), sufsz = suffix.size();
@@ -507,6 +523,7 @@ int main(int argc, char **argv)
 
 	_assert_permissions(options.sota_config_dir);
 	_assert_not_registered(options.sota_config_dir);
+	_assert_not_running();
 
 	string final_uuid, pkey, csr;
 	std::tie(final_uuid, pkey, csr) = _create_cert(options);
