@@ -103,8 +103,8 @@ static bool _get_options(int argc, char **argv, Options &options)
 		 "This is associated with the device, e.g. as the CommonName field "
 		 "in certificates related to it.")
 
-		("name,n", po::value<string>(&options.name)->required(),
-		 "The name of the device as it should appear in the dashboard.")
+		("name,n", po::value<string>(&options.name),
+		 "The name of the device as it should appear in the dashboard. If not specified, it will use the device's UUID")
 
 		("api-token,T", po::value<string>(&options.api_token),
 		 "Use a foundries.io API token for authentication. If not specified, oauth2 will be used")
@@ -486,7 +486,6 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	cout << "Registering device, " << options.name << ", to factory " << options.factory << "." << endl;
 	if (!options.hsm_module.empty()) {
 		if (options.hsm_so_pin.empty() || options.hsm_pin.empty()) {
 			cerr << "--hsm-module given without both --hsm-so-pin and --hsm-pin" << endl;
@@ -501,6 +500,10 @@ int main(int argc, char **argv)
 
 	string final_uuid, pkey, csr;
 	std::tie(final_uuid, pkey, csr) = _create_cert(options);
+	if (options.name.empty()) {
+		options.name = final_uuid;
+	}
+	cout << "Registering device, " << options.name << ", to factory " << options.factory << "." << endl;
 	if (options.uuid.empty()) {
 		cout << "Device UUID: " << final_uuid << endl;
 	}
