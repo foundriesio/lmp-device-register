@@ -473,6 +473,15 @@ static void _assert_permissions(const string &sota_config_dir)
 	unlink(test_file.c_str());
 }
 
+static void _assert_not_registered(const string &sota_config_dir)
+{
+	string path = sota_config_dir + "/sql.db";
+	if (access(path.c_str(), F_OK ) == 0 ) {
+		cerr << "ERROR: Device appears to already be registered in " << path << endl;
+		exit(EXIT_FAILURE);
+	}
+}
+
 static bool ends_with(const std::string &s, const std::string &suffix)
 {
 	string::size_type ssz = s.size(), sufsz = suffix.size();
@@ -497,6 +506,7 @@ int main(int argc, char **argv)
 	}
 
 	_assert_permissions(options.sota_config_dir);
+	_assert_not_registered(options.sota_config_dir);
 
 	string final_uuid, pkey, csr;
 	std::tie(final_uuid, pkey, csr) = _create_cert(options);
