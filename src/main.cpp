@@ -53,6 +53,7 @@ struct Options {
 	string hsm_so_pin;
 	string hsm_pin;
 	string sota_config_dir;
+	bool start_daemon;
 #ifdef AKLITE_TAGS
 	string pacman_tags;
 #endif
@@ -103,11 +104,14 @@ static bool _get_options(int argc, char **argv, Options &options)
 		 "This is associated with the device, e.g. as the CommonName field "
 		 "in certificates related to it.")
 
-		("name,n", po::value<string>(&options.name)->required(),
-		 "The name of the device as it should appear in the dashboard.")
+		("name,n", po::value<string>(&options.name),
+		 "The name of the device as it should appear in the dashboard. If not specified, it will use the device's UUID")
 
 		("api-token,T", po::value<string>(&options.api_token),
 		 "Use a foundries.io API token for authentication. If not specified, oauth2 will be used")
+
+		("start-daemon", po::value<bool>(&options.start_daemon)->default_value(true),
+		 "Start the aktlualizr-lite systemd service automatically after performing the registration.")
 
 		("hsm-module,m", po::value<string>(&options.hsm_module),
 		 "The path to the PKCS#11 .so for the HSM, if using one.")
@@ -473,6 +477,31 @@ static void _assert_permissions(const string &sota_config_dir)
 	unlink(test_file.c_str());
 }
 
+static void _assert_not_registered(const string &sota_config_dir)
+{
+	string path = sota_config_dir + "/sql.db";
+	if (access(path.c_str(), F_OK ) == 0 ) {
+		cerr << "ERROR: Device appears to already be registered in " << path << endl;
+		exit(EXIT_FAILURE);
+	}
+}
+
+static void _assert_not_running() {
+	string out = _spawn("ps -ef");
+	size_t pos = 0;
+	while ((pos = out.find("\n")) != std::string::npos) {
+	    string line = out.substr(0, pos);
+	    if (line.find("aktualizr-lite") != std::string::npos) {
+	    	if (line.find("daemon") != std::string::npos) {
+	    		cerr << "ERROR: aktualizr-lite daemon appears to be running:" << endl;
+			cerr << line << endl;
+			exit(EXIT_FAILURE);
+		}
+	    }
+	    out.erase(0, pos + 1);
+	}
+}
+
 static bool ends_with(const std::string &s, const std::string &suffix)
 {
 	string::size_type ssz = s.size(), sufsz = suffix.size();
@@ -486,7 +515,6 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	cout << "Registering device, " << options.name << ", to factory " << options.factory << "." << endl;
 	if (!options.hsm_module.empty()) {
 		if (options.hsm_so_pin.empty() || options.hsm_pin.empty()) {
 			cerr << "--hsm-module given without both --hsm-so-pin and --hsm-pin" << endl;
@@ -498,9 +526,15 @@ int main(int argc, char **argv)
 	}
 
 	_assert_permissions(options.sota_config_dir);
+	_assert_not_registered(options.sota_config_dir);
+	_assert_not_running();
 
 	string final_uuid, pkey, csr;
 	std::tie(final_uuid, pkey, csr) = _create_cert(options);
+	if (options.name.empty()) {
+		options.name = final_uuid;
+	}
+	cout << "Registering device, " << options.name << ", to factory " << options.factory << "." << endl;
 	if (options.uuid.empty()) {
 		cout << "Device UUID: " << final_uuid << endl;
 	}
@@ -598,6 +632,11 @@ int main(int argc, char **argv)
 		}
 	}
 	cout << "Device is now registered." << endl;
+
+	if (options.start_daemon) {
+		cout << "Starting aktualizr-lite daemon" << endl;
+		_spawn("systemctl start aktualizr-lite");
+	}
 
 	return EXIT_SUCCESS;
 }
