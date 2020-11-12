@@ -94,7 +94,7 @@ static bool _get_options(int argc, char **argv, Options &options)
 #endif
 #if defined DOCKER_COMPOSE_APP
 		("apps,a", po::value<string>(&options.apps),
-		 "Configure package-manage for this comma separate list of apps.")
+		 "Configure package-manager for this comma separate list of apps.")
 #endif
 		("hwid,i", po::value<string>(&options.hwid)->default_value(HARDWARE_ID),
 		 "An identifier for the device's hardware type. Default is " HARDWARE_ID)
@@ -111,7 +111,7 @@ static bool _get_options(int argc, char **argv, Options &options)
 		 "Use a foundries.io API token for authentication. If not specified, oauth2 will be used")
 
 		("start-daemon", po::value<bool>(&options.start_daemon)->default_value(true),
-		 "Start the aktlualizr-lite systemd service automatically after performing the registration.")
+		 "Start the aktualizr-lite systemd service automatically after performing the registration.")
 
 		("hsm-module,m", po::value<string>(&options.hsm_module),
 		 "The path to the PKCS#11 .so for the HSM, if using one.")
