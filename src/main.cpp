@@ -584,7 +584,13 @@ int main(int argc, char **argv)
 	write_json(data, device);
 
 	ptree resp;
-	gint64 code = Curl(DEVICE_API).Post(headers, data.str(), resp);
+	const char* device_api = std::getenv("DEVICE_API");
+	if (device_api != nullptr) {
+		cout << "Using DEVICE_API: " << device_api << endl;
+	} else {
+		device_api = DEVICE_API;
+	}
+	gint64 code = Curl(device_api).Post(headers, data.str(), resp);
 	if (code != 201) {
 		cerr << "Unable to create device: HTTP_" << code << endl;
 		if (resp.data().length() != 0) {
