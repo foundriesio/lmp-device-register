@@ -24,6 +24,12 @@ if(DOCKER_COMPOSE_APP)
     message(STATUS "Enabling compose-apps support")
 endif(DOCKER_COMPOSE_APP)
 
+option(PRODUCTION "Set to ON to add a production business category into a client certificate" OFF)
+if(PRODUCTION)
+    add_definitions(-DPRODUCTION)
+    message(STATUS "Enabling production client certificates")
+endif(PRODUCTION)
+
 IF (NOT DEFINED HARDWARE_ID)
     message(FATAL_ERROR "Missing required value: HARDWARE_ID")
 ENDIF()

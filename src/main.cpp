@@ -60,6 +60,7 @@ struct Options {
 #if defined DOCKER_COMPOSE_APP
 	string apps;
 #endif
+	bool is_prod;
 };
 
 static void _set_factory_option(std::string& factory) {
@@ -72,6 +73,19 @@ static void _set_factory_option(std::string& factory) {
 	if (factory.empty()) {
 		throw std::invalid_argument("Empty value of the device factory parameter");
 	}
+}
+
+static void _set_prod_option(bool& is_prod) {
+#ifdef PRODUCTION
+	is_prod = true;
+#else
+	is_prod = false;
+	const char* production_env_var = std::getenv("PRODUCTION");
+	if (production_env_var != nullptr) {
+		cout << "Enabling production client certificates via the environment variable" << endl;
+		is_prod = true;
+	}
+#endif
 }
 
 static bool _get_options(int argc, char **argv, Options &options)
@@ -139,6 +153,7 @@ static bool _get_options(int argc, char **argv, Options &options)
 		}
 		po::notify(vm);
 		_set_factory_option(options.factory);
+		_set_prod_option(options.is_prod);
 	} catch (const po::error &o) {
 		cout << "ERROR: " << o.what() << endl;
 		cout << endl << desc << endl;
@@ -384,6 +399,9 @@ static std::tuple<string, string, string> _create_cert(const Options &options)
 	cnf_out << "[dn]" << endl;
 	cnf_out << "CN=" << uuid << endl;
 	cnf_out << "OU=" << options.factory << endl;
+	if (options.is_prod) {
+		cnf_out << "businessCategory=production" << endl;
+	}
 	cnf_out << endl;
 	cnf_out << "[ext]" << endl;
 	cnf_out << "keyUsage=critical, digitalSignature" << endl;
