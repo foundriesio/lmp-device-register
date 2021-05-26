@@ -54,6 +54,7 @@ struct Options {
 	string hsm_pin;
 	string sota_config_dir;
 	bool start_daemon;
+	bool use_ostree_server;
 #ifdef AKLITE_TAGS
 	string pacman_tags;
 #endif
@@ -126,6 +127,9 @@ static bool _get_options(int argc, char **argv, Options &options)
 
 		("start-daemon", po::value<bool>(&options.start_daemon)->default_value(true),
 		 "Start the aktualizr-lite systemd service automatically after performing the registration.")
+
+		("use-ostree-server", po::value<bool>(&options.use_ostree_server)->default_value(true),
+		 "Use OSTree Proxy server instead of Device Gateway to pull ostree repo from.")
 
 		("hsm-module,m", po::value<string>(&options.hsm_module),
 		 "The path to the PKCS#11 .so for the HSM, if using one.")
@@ -577,6 +581,7 @@ int main(int argc, char **argv)
 	device.put("csr", csr);
 	device.put("hardware-id", options.hwid);
 	device.put("sota-config-dir", options.sota_config_dir);
+	device.put<bool>("use-ostree-server", options.use_ostree_server);
 	if (!options.hsm_module.empty()) {
 		device.put("overrides.tls.pkey_source", "\"pkcs11\"");
 		device.put("overrides.tls.cert_source", "\"pkcs11\"");
