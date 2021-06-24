@@ -24,6 +24,7 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <boost/interprocess/sync/file_lock.hpp>
 
 namespace po = boost::program_options;
 using boost::property_tree::ptree;
@@ -509,18 +510,19 @@ static void _assert_not_registered(const string &sota_config_dir)
 }
 
 static void _assert_not_running() {
-	string out = _spawn("ps -ef");
-	size_t pos = 0;
-	while ((pos = out.find("\n")) != std::string::npos) {
-	    string line = out.substr(0, pos);
-	    if (line.find("aktualizr-lite") != std::string::npos) {
-	    	if (line.find("daemon") != std::string::npos) {
-	    		cerr << "ERROR: aktualizr-lite daemon appears to be running:" << endl;
-			cerr << line << endl;
+	const char* const lock_path{"/var/lock/aklite.lock"};
+	if (!boost::filesystem::exists(lock_path)) {
+		return;
+	}
+	boost::interprocess::file_lock lock{lock_path};
+	try {
+		if (!lock.try_lock_sharable()) {
+			cerr << "ERROR: aktualizr-lite daemon appears to be running" << endl;
 			exit(EXIT_FAILURE);
 		}
-	    }
-	    out.erase(0, pos + 1);
+	} catch (...) {
+		cerr << "ERROR: failed to check whether aktualizr-lite is running" << endl;
+		exit(EXIT_FAILURE);
 	}
 }
 
