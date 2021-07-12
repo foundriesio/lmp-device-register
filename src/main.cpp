@@ -46,6 +46,7 @@ typedef std::map<std::string, string> http_headers;
 
 struct Options {
 	string api_token;
+	string api_token_header;
 	string factory;
 	string hwid;
 	string uuid;
@@ -124,7 +125,10 @@ static bool _get_options(int argc, char **argv, Options &options)
 		 "The name of the device as it should appear in the dashboard. If not specified, it will use the device's UUID")
 
 		("api-token,T", po::value<string>(&options.api_token),
-		 "Use a foundries.io API token for authentication. If not specified, oauth2 will be used")
+		 "Use an API token for authentication. If not specified, oauth2 will be used")
+
+		("api-token-header,H", po::value<string>(&options.api_token_header)->default_value("OSF-TOKEN"),
+		 "Specify a HTTP header to be used for authentication. Defaults to \"OSF-TOKEN\".")
 
 		("start-daemon", po::value<bool>(&options.start_daemon)->default_value(true),
 		 "Start the aktualizr-lite systemd service automatically after performing the registration.")
@@ -567,7 +571,7 @@ int main(int argc, char **argv)
 	headers["Content-type"] = "application/json";
 
 	if (!options.api_token.empty()) {
-		headers["OSF-TOKEN"] = options.api_token;
+		headers[options.api_token_header] = options.api_token;
 	} else {
 		string token = _get_oauth_token(options.factory, final_uuid);
 		string token_base64;
