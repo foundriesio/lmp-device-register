@@ -103,10 +103,10 @@ static bool _get_options(int argc, char **argv, Options &options)
 #ifdef AKLITE_TAGS
 #ifdef DEFAULT_TAG
 		("tags,t", po::value<string>(&options.pacman_tags)->default_value(DEFAULT_TAG),
-		 "Configure aktualizr-lite to only apply updates from Targets with these tags. Default is " DEFAULT_TAG)
+		 "Configure " SOTA_CLIENT " to only apply updates from Targets with these tags. Default is " DEFAULT_TAG)
 #else
 		("tags,t", po::value<string>(&options.pacman_tags),
-		 "Configure aktualizr-lite to only apply updates from Targets with these tags.")
+		 "Configure " SOTA_CLIENT " to only apply updates from Targets with these tags.")
 #endif
 #endif
 #if defined DOCKER_COMPOSE_APP
@@ -131,7 +131,7 @@ static bool _get_options(int argc, char **argv, Options &options)
 		 "Specify a HTTP header to be used for authentication. Defaults to \"OSF-TOKEN\".")
 
 		("start-daemon", po::value<bool>(&options.start_daemon)->default_value(true),
-		 "Start the aktualizr-lite systemd service automatically after performing the registration.")
+		 "Start the " SOTA_CLIENT " systemd service automatically after performing the registration.")
 
 		("use-ostree-server", po::value<bool>(&options.use_ostree_server)->default_value(true),
 		 "Use OSTree Proxy server instead of Device Gateway to pull ostree repo from.")
@@ -521,11 +521,11 @@ static void _assert_not_running() {
 	boost::interprocess::file_lock lock{lock_path};
 	try {
 		if (!lock.try_lock_sharable()) {
-			cerr << "ERROR: aktualizr-lite daemon appears to be running" << endl;
+			cerr << "ERROR: " SOTA_CLIENT " daemon appears to be running" << endl;
 			exit(EXIT_FAILURE);
 		}
 	} catch (...) {
-		cerr << "ERROR: failed to check whether aktualizr-lite is running" << endl;
+		cerr << "ERROR: failed to check whether " SOTA_CLIENT " is running" << endl;
 		exit(EXIT_FAILURE);
 	}
 }
@@ -669,8 +669,8 @@ int main(int argc, char **argv)
 	cout << "Device is now registered." << endl;
 
 	if (options.start_daemon) {
-		cout << "Starting aktualizr-lite daemon" << endl;
-		_spawn("systemctl start aktualizr-lite");
+		cout << "Starting " SOTA_CLIENT " daemon" << endl;
+		_spawn("systemctl start " SOTA_CLIENT);
 	}
 
 	return EXIT_SUCCESS;

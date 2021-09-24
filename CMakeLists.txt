@@ -58,6 +58,12 @@ ENDIF()
 ADD_DEFINITIONS(-DGIT_COMMIT="${GIT_COMMIT}")
 message(STATUS "Setting GIT_COMMIT to ${GIT_COMMIT}")
 
+IF (NOT DEFINED SOTA_CLIENT)
+    SET(SOTA_CLIENT "aktualizr-lite")
+ENDIF()
+ADD_DEFINITIONS(-DSOTA_CLIENT="${SOTA_CLIENT}")
+message(STATUS "Setting SOTA_CLIENT to ${SOTA_CLIENT}")
+
 add_definitions('-g')
 add_definitions('-Wall')
 
