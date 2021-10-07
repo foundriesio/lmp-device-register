@@ -62,6 +62,7 @@ struct Options {
 #endif
 #if defined DOCKER_COMPOSE_APP
 	string apps;
+	string restorable_apps;
 #endif
 	bool is_prod;
 };
@@ -111,7 +112,16 @@ static bool _get_options(int argc, char **argv, Options &options)
 #endif
 #if defined DOCKER_COMPOSE_APP
 		("apps,a", po::value<string>(&options.apps),
-		 "Configure package-manager for this comma separate list of apps.")
+		"Configure package-manager for this comma separate list of apps.")
+		// --restorable-apps : turn ON Restorable Apps usage, its list == compose_apps or all Target apps
+		// --restorable-apps "app-01[,app-02]" : turn ON Restorable Apps usage, its list == UNION(compose_apps, app-01[,app-02])
+		// if --restorable-apps is not specified or `--restorable-apps ""` then it means turning restorable Apps off
+		 ("restorable-apps,A", po::value<string>(&options.restorable_apps)->implicit_value(" "),
+		 "Configure package-manager for this comma separate list of Restorable Apps."
+		 "If it is not specified, but a system image is preloaded with Restorable Apps then "
+		 "the Restorable App list is set to an empty list which means turning restorable App usage ON and"
+		 " the resultant list will be equal to the `apps` list."
+		 " Restorable App list = UNION(compose-apps, restorable-apps)")
 #endif
 		("hwid,i", po::value<string>(&options.hwid)->default_value(HARDWARE_ID),
 		 "An identifier for the device's hardware type. Default is " HARDWARE_ID)
@@ -607,6 +617,16 @@ int main(int argc, char **argv)
 	device.put("overrides.pacman.compose_apps_root", "\"" + apps_root + "\"");
 	if (!options.apps.empty()) {
 		device.put("overrides.pacman.compose_apps", "\"" + options.apps + "\"");
+	}
+	string reset_apps_root = options.sota_config_dir + "/restorable-apps";
+	device.put("overrides.pacman.reset_apps_root", "\"" + reset_apps_root + "\"");
+
+	if (!options.restorable_apps.empty()) {
+		device.put("overrides.pacman.reset_apps", "\"" + options.restorable_apps + "\"");
+	} else if (boost::filesystem::exists(reset_apps_root)) {
+		// if `restorable-apps` is not specified but a system image is preloaded with Restorable Apps then force restorable-apps ON
+		cout << "Device is preloaded with Restorable Apps, turning their usage ON" << endl;
+		device.put("overrides.pacman.reset_apps", "\"\"");
 	}
 #endif
 	stringstream data;
