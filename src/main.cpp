@@ -331,19 +331,16 @@ static void _unsetenv(const char *name)
 // There are two flows:
 //
 // 1. If hsm_module_in is empty or null, file-based keys will be
-//    generated and used. Return value is (device_uuid, key_id,
-//    csr).
+//    generated and used. Return value is (key_id, csr).
 //
 // 2. Otherwise, we initialize a token on the PKCS#11 HSM with label
 //    aktualizr, generate the keypair there (label tls, ID 01), and
-//    extract the public half. Return value is (device_uuid, key_file,
-//    csr).
-static std::tuple<string, string, string> _create_cert(const Options &options)
+//    extract the public half. Return value is (key_file, csr).
+static std::tuple<string, string> _create_cert(const Options &options, const string& uuid)
 {
 	TempDir tmp_dir;
 	string pkey;		// Private key data when no HSM used.
 	string pkey_file;	// Temporary file for private key when no HSM is used.
-	string uuid;
 
 	// Create the key.
 	if (options.hsm_module.empty()) {
@@ -368,25 +365,6 @@ static std::tuple<string, string, string> _create_cert(const Options &options)
 			     " --id " + hsm_tls_key_id +
 			     " --label " + hsm_tls_key_label,
 			     options.hsm_pin);
-	}
-
-	// Ensure a UUID is available.
-	if (!options.uuid.empty()) {
-		uuid = options.uuid;
-	} else if (!options.hsm_module.empty()) {
-		// Fetch from PKCS11 if available as part of the slot information
-		string slot_info = _pkcs11_tool(options.hsm_module, "--list-slots");
-		std::regex re("(Slot .*: )([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})");
-		std::smatch match;
-		std::regex_search(slot_info, match, re);
-		if (match.size() > 2) {
-			uuid = match.str(2);
-		}
-	}
-	// If UUID not available, generate one
-	if (uuid.empty()) {
-		boost::uuids::uuid tmp = boost::uuids::random_generator()();
-		uuid = boost::uuids::to_string(tmp);
 	}
 
 	// Create a CSR.
@@ -429,7 +407,7 @@ static std::tuple<string, string, string> _create_cert(const Options &options)
 
 	if (options.hsm_module.empty()) {
 		csr = _spawn("openssl req -new -config " + cnf + " -key " + pkey_file);
-		return std::make_tuple(uuid, pkey, csr);
+		return std::make_tuple(pkey, csr);
 	} else {
 		string key = "\"pkcs11:token=" + hsm_token_label +
 			";object=" + hsm_tls_key_label +
@@ -441,7 +419,7 @@ static std::tuple<string, string, string> _create_cert(const Options &options)
 		_setenv("OPENSSL_CONF", cnf.c_str());
 		csr = _spawn("openssl req -new -engine pkcs11 -keyform engine -key " + key);
 		_unsetenv("OPENSSL_CONF");
-		return std::make_tuple(uuid, hsm_tls_key_id, csr);
+		return std::make_tuple(hsm_tls_key_id, csr);
 	}
 }
 
@@ -546,6 +524,30 @@ static bool ends_with(const std::string &s, const std::string &suffix)
 	return ssz >= sufsz && s.compare(ssz - sufsz, sufsz, suffix) == 0;
 }
 
+static string get_device_id(const Options& options) {
+  string uuid; // resultant device ID, must be in UUID format
+  // Ensure a UUID is available.
+  if (!options.uuid.empty()) {
+    uuid = options.uuid;
+  } else if (!options.hsm_module.empty()) {
+    // Fetch from PKCS11 if available as part of the slot information
+    string slot_info = _pkcs11_tool(options.hsm_module, "--list-slots");
+    std::regex re("(Slot .*: )([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})");
+    std::smatch match;
+    std::regex_search(slot_info, match, re);
+    if (match.size() > 2) {
+      uuid = match.str(2);
+    }
+  }
+  // If ID is not specified as a command line param and cannot be fecthed from PKCS11 (slot uuid)
+  // then just use boost uuid generator (why not use it by default ???)
+  if (uuid.empty()) {
+    boost::uuids::uuid tmp = boost::uuids::random_generator()();
+    uuid = boost::uuids::to_string(tmp);
+  }
+  return uuid;
+}
+
 int main(int argc, char **argv)
 {
 	Options options;
@@ -567,28 +569,33 @@ int main(int argc, char **argv)
 	_assert_not_registered(options.sota_config_dir);
 	_assert_not_running();
 
-	string final_uuid, pkey, csr;
-	std::tie(final_uuid, pkey, csr) = _create_cert(options);
+	const string final_uuid{get_device_id(options)};
+
+	http_headers headers{
+	    {"Content-type", "application/json"}
+	}; // headers of a request to the device registration endpoint DEVICE_API (by default https://api.foundries.io/ota/devices/)
+	if (options.api_token.empty()) {
+	  // if a token is not specified as a command line parameter then try to get an oauth token
+	  // from the Foundries' auth endpoint (https://app.foundries.io/oauth/authorization/device/)
+	  cout << "Token is not specified, getting an oauth token from Foundries' auth endpoint..." << endl;
+	  string token = _get_oauth_token(options.factory, final_uuid);
+	  string token_base64;
+	  token_base64.resize(boost::beast::detail::base64::encoded_size(token.size()));
+	  boost::beast::detail::base64::encode(&token_base64[0], token.data(), token.size());
+
+	  headers["Authorization"] = "Bearer " + token_base64;
+	} else {
+	  headers[options.api_token_header] = options.api_token;
+	}
+
+	string pkey, csr;
+	std::tie(pkey, csr) = _create_cert(options, final_uuid);
 	if (options.name.empty()) {
 		options.name = final_uuid;
 	}
 	cout << "Registering device, " << options.name << ", to factory " << options.factory << "." << endl;
 	if (options.uuid.empty()) {
 		cout << "Device UUID: " << final_uuid << endl;
-	}
-
-	http_headers headers;
-	headers["Content-type"] = "application/json";
-
-	if (!options.api_token.empty()) {
-		headers[options.api_token_header] = options.api_token;
-	} else {
-		string token = _get_oauth_token(options.factory, final_uuid);
-		string token_base64;
-		token_base64.resize(boost::beast::detail::base64::encoded_size(token.size()));
-		boost::beast::detail::base64::encode(&token_base64[0], token.data(), token.size());
-
-		headers["Authorization"] = "Bearer " + token_base64;
 	}
 
 	ptree device;
