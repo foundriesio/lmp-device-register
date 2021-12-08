@@ -216,6 +216,23 @@ class Curl {
 			cerr << "Raw response was: " << body.str() << endl;
 		}
 	}
+	std::tuple<bool, string> PingEndpoint() {
+	  curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);
+	  CURLcode res = curl_easy_perform(curl);
+	  if (res != CURLE_OK) {
+	    return {false, "Unable to reach the device registration endpoint " + _url + "; err: " + curl_easy_strerror(res)};
+	  }
+	  gint64 code = 0;
+	  CURLcode get_info_res = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+	  if (get_info_res != CURLE_OK) {
+	    return {false, "Error while checking the device registration endpoint; err: unable to get curl info: " + string(curl_easy_strerror(get_info_res))};
+	  }
+	  if (code >= 500) {
+	    // 401 or 400 is returned under normal circumstances what indicates that the OTA backend is reachable and functional
+	    return {false, "The device registration endpoint is not healthy" + _url + "; status code: " + std::to_string(code)};
+	  }
+	  return {true, ""};
+	}
 	gint64 Post(const http_headers &headers, const string &data, ptree &resp)
 	{
 		stringstream body;
@@ -588,6 +605,20 @@ int main(int argc, char **argv)
 	  headers[options.api_token_header] = options.api_token;
 	}
 
+	const char* device_api = std::getenv("DEVICE_API");
+	if (device_api != nullptr) {
+	  cout << "Using DEVICE_API: " << device_api << endl;
+	} else {
+	  device_api = DEVICE_API;
+	}
+
+	// check if the device registration server and endpoint are reachable before creating a device key&CSR and posting request to the backend.
+	const auto ping_res{Curl(device_api).PingEndpoint()};
+	if (!std::get<0>(ping_res)) {
+	  cerr << std::get<1>(ping_res) << endl;
+	  exit(EXIT_FAILURE);
+	}
+
 	string pkey, csr;
 	std::tie(pkey, csr) = _create_cert(options, final_uuid);
 	if (options.name.empty()) {
@@ -640,12 +671,6 @@ int main(int argc, char **argv)
 	write_json(data, device);
 
 	ptree resp;
-	const char* device_api = std::getenv("DEVICE_API");
-	if (device_api != nullptr) {
-		cout << "Using DEVICE_API: " << device_api << endl;
-	} else {
-		device_api = DEVICE_API;
-	}
 	gint64 code = Curl(device_api).Post(headers, data.str(), resp);
 	if (code != 201) {
 		cerr << "Unable to create device: HTTP_" << code << endl;
