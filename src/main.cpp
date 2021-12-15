@@ -113,10 +113,10 @@ static bool _get_options(int argc, char **argv, Options &options)
 #if defined DOCKER_COMPOSE_APP
 		("apps,a", po::value<string>(&options.apps),
 		"Configure package-manager for this comma separate list of apps.")
-		// --restorable-apps : turn ON Restorable Apps usage, its list == compose_apps or all Target apps
-		// --restorable-apps "app-01[,app-02]" : turn ON Restorable Apps usage, its list == UNION(compose_apps, app-01[,app-02])
-		// if --restorable-apps is not specified or `--restorable-apps ""` then it means turning restorable Apps off
-		 ("restorable-apps,A", po::value<string>(&options.restorable_apps)->implicit_value(" "),
+		// Restorable Apps are enabled by default, its list == compose_apps or all Target apps
+		// --restorable-apps "app-01[,app-02]" : enable Restorable Apps usage, and its list == UNION(compose_apps, app-01[,app-02])
+		// `--restorable-apps ""` : disable Restorable Apps usage
+		 ("restorable-apps,A", po::value<string>(&options.restorable_apps)->default_value(" "),
 		 "Configure package-manager for this comma separate list of Restorable Apps."
 		 "If it is not specified, but a system image is preloaded with Restorable Apps then "
 		 "the Restorable App list is set to an empty list which means turning restorable App usage ON and"
