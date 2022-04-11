@@ -47,6 +47,7 @@ typedef std::map<std::string, string> http_headers;
 struct Options {
 	string api_token;
 	string api_token_header;
+	string device_group;
 	string factory;
 	string hwid;
 	string uuid;
@@ -133,6 +134,9 @@ static bool _get_options(int argc, char **argv, Options &options)
 
 		("name,n", po::value<string>(&options.name),
 		 "The name of the device as it should appear in the dashboard. If not specified, it will use the device's UUID")
+
+		("device-group,g", po::value<string>(&options.device_group),
+		 "Assign the device into a device group")
 
 		("api-token,T", po::value<string>(&options.api_token),
 		 "Use an API token for authentication. If not specified, oauth2 will be used")
@@ -667,6 +671,9 @@ int main(int argc, char **argv)
 		device.put("overrides.pacman.reset_apps", "\"\"");
 	}
 #endif
+	if (!options.device_group.empty()) {
+		device.put("group", options.device_group);
+	}
 	stringstream data;
 	write_json(data, device);
 
