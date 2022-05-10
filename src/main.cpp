@@ -447,7 +447,7 @@ static std::tuple<string, string> _create_cert(const Options &options, const str
 static string _get_oauth_token(const string &factory, const string &device_uuid)
 {
 	ptree json;
-	string data = "client_id=" + device_uuid;
+	string data;
 	std::map<string, string> headers;
 	string url;
 	if (getenv("OAUTH_BASE") != nullptr) {
@@ -455,6 +455,9 @@ static string _get_oauth_token(const string &factory, const string &device_uuid)
 	} else {
 		url = "https://app.foundries.io/oauth";
 	}
+
+	data = "client_id=" + device_uuid;
+	data += "&scope=" + factory + ":devices:create";
 
 	gint64 code = Curl(url + "/authorization/device/").Post(headers, data, json);
 	if (code != 200) {
