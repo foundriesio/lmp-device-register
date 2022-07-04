@@ -403,7 +403,7 @@ static std::tuple<string, string> _create_cert(const Options &options, const str
 		cnf_out << endl;
 		cnf_out << "[p11]" << endl;
 		cnf_out << "engine_id = pkcs11" << endl;
-		cnf_out << "dynamic_path = /usr/lib/engines-1.1/pkcs11.so" << endl;
+		cnf_out << "dynamic_path = /usr/lib/engines-3/pkcs11.so" << endl;
 		cnf_out << "MODULE_PATH = " << options.hsm_module << endl;
 		cnf_out << "PIN = " << options.hsm_pin << endl;
 		cnf_out << "init = 0" << endl;
