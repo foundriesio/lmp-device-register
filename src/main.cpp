@@ -16,6 +16,20 @@
 #include <string>
 #include <regex>
 
+#include <libp11.h>
+#include <openssl/pem.h>
+#include <openssl/evp.h>
+#include <openssl/encoder.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
+#include <openssl/err.h>
+#include <openssl/buffer.h>
+
+#define B_FORMAT_TEXT   0x8000
+#define FORMAT_PEM     (5 | B_FORMAT_TEXT)
+#define FORMAT_ASN1     4
+
+
 #include <boost/algorithm/string.hpp>
 #include <boost/beast/core/detail/base64.hpp>
 #include <boost/filesystem.hpp>
@@ -36,8 +50,8 @@ using std::stringstream;
 
 // OpenSSL works with object labels, while aktualizr works with IDs.
 static const string hsm_token_label = "aktualizr";
-static const string hsm_tls_key_id = "01";           // TLS key ID on HSM, when used (for sota.toml)
-static const string hsm_client_cert_id = "03";       // Client certificate's ID on HSM, when used (for sota.toml)
+static const unsigned char hsm_tls_key_id = 1;           // TLS key ID on HSM, when used (for sota.toml)
+static const unsigned char hsm_client_cert_id = 3;       // Client certificate's ID on HSM, when used (for sota.toml)
 static const string hsm_tls_key_label = "tls";       // TLS key label on HSM, when used (for OpenSSL)
 static const string hsm_client_cert_label = "client"; // Uptane key label on HSM, when used (for OpenSSL)
 
@@ -319,35 +333,16 @@ static string _spawn(const string& cmd_line)
 	return stdout_buff;
 }
 
-static string _pkcs11_tool(const string &module, const string &cmd)
-{
-	return _spawn("pkcs11-tool --module " + module + " " + cmd);
+int add_ext(STACK_OF(X509_EXTENSION) *sk, int nid, char *value) {
+	X509_EXTENSION *ex;
+	ex = X509V3_EXT_conf_nid(NULL, NULL, nid, value);
+	X509_EXTENSION_set_critical(ex, 1);
+  	if (!ex)
+    	return 0;
+	sk_X509_EXTENSION_push(sk, ex);
+	return 1;
 }
 
-static string _pkcs11_tool(const string &module, const string &cmd, const string &pin)
-{
-	return _pkcs11_tool(module, "--pin " + pin + " " + cmd);
-}
-
-static void _setenv(const char *name, const char *value)
-{
-	int rc = setenv(name, value, 1);
-
-	if (rc != 0) {
-		cerr << "failed to set " << name << ": " << strerror(errno) << endl;
-		exit(EXIT_FAILURE);
-	}
-}
-
-static void _unsetenv(const char *name)
-{
-	int rc = unsetenv(name);
-
-	if (rc != 0) {
-		cerr << "failed to set " << name << ": " << strerror(errno) << endl;
-		exit(EXIT_FAILURE);
-	}
-}
 
 // There are two flows:
 //
@@ -359,89 +354,234 @@ static void _unsetenv(const char *name)
 //    extract the public half. Return value is (key_file, csr).
 static std::tuple<string, string> _create_cert(const Options &options, const string& uuid)
 {
-	TempDir tmp_dir;
 	string pkey;		// Private key data when no HSM used.
-	string pkey_file;	// Temporary file for private key when no HSM is used.
+	EVP_PKEY *key{nullptr};
 
-	// Create the key.
+	X509_REQ * x509_req{nullptr};
+	X509_NAME * x509_name{nullptr};
+	STACK_OF(X509_EXTENSION) * extensions;
+
+	BIO * out{nullptr};
+	BUF_MEM *bptr{nullptr};
+
+	const char * key_usage_str = "digitalSignature";
+	const char * ex_key_usage_str = "clientAuth";
+
+	// Create output BIO
+	out = BIO_new(BIO_s_mem());
+	// Create CSR
+	x509_req = X509_REQ_new();
+	x509_name = X509_REQ_get_subject_name(x509_req);
+
+	if (X509_NAME_add_entry_by_txt(x509_name,"CN", MBSTRING_ASC, (const unsigned char*)uuid.c_str(), -1, -1, 0) != 1){
+		throw std::runtime_error("Unable to set CN on CSR");
+	}
+
+	if (X509_NAME_add_entry_by_txt(x509_name,"OU", MBSTRING_ASC, (const unsigned char*)options.factory.c_str(), -1, -1, 0) != 1) {
+		throw std::runtime_error("Unable to set OU on CSR");
+	}
+	// create extensions
+	extensions = X509_REQ_get_extensions(x509_req);
+
+	if (add_ext(extensions, NID_key_usage, strdup(key_usage_str)) != 1) {
+		throw std::runtime_error("Unable to set KeyUsage on CSR");
+	}
+	if (add_ext(extensions, NID_ext_key_usage, strdup(ex_key_usage_str)) != 1) {
+		throw std::runtime_error("Unable to set ExKeyUsage on CSR");
+	}
+	if (X509_REQ_add_extensions(x509_req, extensions) != 1) {
+		throw std::runtime_error("Unable to add v3 extensions to CSR");
+	}
+
 	if (options.hsm_module.empty()) {
 		// Create a file-based key.
-		pkey = _spawn("openssl ecparam -genkey -name prime256v1");
-		pkey_file = tmp_dir.GetPath() + "/pkey.pem";
-		std::ofstream pkey_out(pkey_file);
-		pkey_out << pkey << endl;
-		pkey_out.close();
+		EVP_PKEY_CTX *gctx{nullptr};
+		OSSL_ENCODER_CTX *ectx_key{nullptr};
+		string curve_name = "prime256v1";
+		const char * outformat = "PEM";
+		unsigned char * pkey_data{nullptr};
+		size_t pkey_data_len;
+
+		gctx = EVP_PKEY_CTX_new_from_name(NULL, "EC", NULL);
+		if (EVP_PKEY_keygen_init(gctx) <= 0) {
+			throw std::runtime_error("EC private key initialization failed");
+		}
+		if (EVP_PKEY_CTX_set_group_name(gctx, curve_name.c_str()) <= 0) {
+			throw std::runtime_error("Unable to use prime256v1 curve");
+		}
+		if (EVP_PKEY_keygen(gctx, &key) <= 0) {
+			throw std::runtime_error("Unable to generate prime256v1 key pair");
+		}
+		ectx_key = OSSL_ENCODER_CTX_new_for_pkey(
+						   key, OSSL_KEYMGMT_SELECT_ALL,
+						   outformat, NULL, NULL);
+
+		if (OSSL_ENCODER_to_data(ectx_key, &pkey_data, &pkey_data_len) != 1) {
+			throw std::runtime_error("Unable to encode EC private key");
+		}
+		OSSL_ENCODER_CTX_free(ectx_key);
+		// Write private key to string
+		pkey = string(reinterpret_cast<char*>(pkey_data));
+
+		if (X509_REQ_set_pubkey(x509_req, key) != 1) {
+			throw std::runtime_error("Unable to set public key on CSR");
+		}
+
+		if (X509_REQ_sign(x509_req, key, EVP_sha256()) == 0) {
+			throw std::runtime_error("Unable to sign CSR");
+		}
+
+		if (PEM_write_bio_X509_REQ(out, x509_req) != 1) {
+			throw std::runtime_error("Unable to write CSR to BIO");
+		}
+
+		EVP_PKEY_free(key);
+
 	} else {
+		int rv;
+		PKCS11_CTX * ctx; // PKCS11 context
+		PKCS11_SLOT * slots_;
+		PKCS11_SLOT * iterslots;
+		unsigned int nslots;
+		PKCS11_SLOT * slot{nullptr};
+		PKCS11_TOKEN * tok;
+
+		EVP_PKEY *public_key{nullptr};
+		EVP_PKEY *private_key{nullptr};
+
+		PKCS11_KEY * p11_keys;
+		PKCS11_KEY * p11_public_key{nullptr};
+		PKCS11_KEY * p11_private_key{nullptr};
+		unsigned int p11_keys_n;
+
+		ctx = PKCS11_CTX_new();
+		if (PKCS11_CTX_load(ctx, options.hsm_module.c_str()) != 0) {
+			PKCS11_CTX_free(ctx);
+			throw std::runtime_error("Couldn't load PKCS11 module");
+		}
 		// Initialize the HSM and create a key in it.
-		_pkcs11_tool(options.hsm_module,
-			     "--init-token --label " + hsm_token_label +
-			     " --so-pin " + options.hsm_so_pin);
-		_pkcs11_tool(options.hsm_module,
-			     "--init-pin --token-label " + hsm_token_label +
-			     " --so-pin " + options.hsm_so_pin +
-			     " --pin " + options.hsm_pin);
-		_pkcs11_tool(options.hsm_module,
-			     "--keypairgen --key-type EC:prime256v1"
-			     " --token-label " + hsm_token_label +
-			     " --id " + hsm_tls_key_id +
-			     " --label " + hsm_tls_key_label,
-			     options.hsm_pin);
-	}
+		if (PKCS11_enumerate_slots(ctx, &slots_, &nslots) != 0) {
+			// throw some error and exit
+			throw std::runtime_error("Couldn't enumerate PKCS11 slots");
+		}
+		iterslots = slots_;
+		for (unsigned int i = 0; i < nslots; i++, iterslots++) {
+			if (iterslots != nullptr  && (tok = iterslots->token) != nullptr) {
+				if (hsm_token_label == tok->label) {
+					slot = iterslots;
+					break;
+				}
+			}
+		}
 
-	// Create a CSR.
-	string csr = tmp_dir.GetPath() + "/device.csr";
-	string cnf = tmp_dir.GetPath() + "/device.cnf";
-	std::ofstream cnf_out(cnf);
-	if (!options.hsm_module.empty()) {
-		cnf_out << "openssl_conf = oc" << endl;
-		cnf_out << endl;
-		cnf_out << "[oc]" << endl;
-		cnf_out << "engines = eng" << endl;
-		cnf_out << endl;
-		cnf_out << "[eng]" << endl;
-		cnf_out << "pkcs11 = p11" << endl;
-		cnf_out << endl;
-		cnf_out << "[p11]" << endl;
-		cnf_out << "engine_id = pkcs11" << endl;
-		cnf_out << "dynamic_path = /usr/lib/engines-3/pkcs11.so" << endl;
-		cnf_out << "MODULE_PATH = " << options.hsm_module << endl;
-		cnf_out << "PIN = " << options.hsm_pin << endl;
-		cnf_out << "init = 0" << endl;
-		cnf_out << endl;
-	}
-	cnf_out << "[req]" << endl;
-	cnf_out << "prompt = no" << endl;
-	cnf_out << "distinguished_name = dn" << endl;
-	cnf_out << "req_extensions = ext" << endl;
-	cnf_out << endl;
-	cnf_out << "[dn]" << endl;
-	cnf_out << "CN=" << uuid << endl;
-	cnf_out << "OU=" << options.factory << endl;
-	if (options.is_prod) {
-		cnf_out << "businessCategory=production" << endl;
-	}
-	cnf_out << endl;
-	cnf_out << "[ext]" << endl;
-	cnf_out << "keyUsage=critical, digitalSignature" << endl;
-	cnf_out << "extendedKeyUsage=critical, clientAuth" << endl;
-	cnf_out.close();
+		if ((slot == nullptr) || (slot->token == nullptr)) {
 
-	if (options.hsm_module.empty()) {
-		csr = _spawn("openssl req -new -config " + cnf + " -key " + pkey_file);
-		return std::make_tuple(pkey, csr);
-	} else {
-		string key = "\"pkcs11:token=" + hsm_token_label +
-			";object=" + hsm_tls_key_label +
-			";type=private" +
-			";pin-value=" + options.hsm_pin + "\"";
-		// For some stupid reason, using OPENSSL_CONF in the
-		// environment works fine here, while using openssl
-		// req -new -config doesn't work with engines.
-		_setenv("OPENSSL_CONF", cnf.c_str());
-		csr = _spawn("openssl req -new -engine pkcs11 -keyform engine -key " + key);
-		_unsetenv("OPENSSL_CONF");
-		return std::make_tuple(hsm_tls_key_id, csr);
+			iterslots = slots_;
+			for (unsigned int ii = 0; ii < nslots; ii++, iterslots++) {
+				if (iterslots != nullptr && (iterslots->token) != nullptr && ! (iterslots->token->initialized)) {
+					slot = iterslots;
+					tok = slot->token;
+					break;
+				}
+			}
+			cout << "Initializing new token" << endl;
+			// slot not yet initialized
+			if (PKCS11_init_token(tok, options.hsm_so_pin.c_str(), hsm_token_label.c_str()) != 0) {
+				// token not initialized, exit
+				throw std::runtime_error("Couldn't initialize PKCS11 token");
+			}
+			if (PKCS11_open_session(slot, 1) != 0) {
+				throw std::runtime_error("Unable to start PKCS11 rw session1");
+			}
+			if (PKCS11_login(slot, 1, options.hsm_so_pin.c_str()) != 0) {
+				throw std::runtime_error("Unable to login to PKCS11 token with SO pin");
+			}
+			if (PKCS11_init_pin(tok, options.hsm_pin.c_str()) !=0) {
+				// failed to initialize pin, exit
+				throw std::runtime_error("Couldn't initialize PKCS11 token pin");
+			}
+			if (PKCS11_logout(slot) != 0) {
+				throw std::runtime_error("Unable to logout from PKCS11 token");
+			}
+		}
+		PKCS11_is_logged_in(slot, 1, &rv);
+		if (rv == 0) {
+			if (PKCS11_open_session(slot, 1) != 0) {
+				throw std::runtime_error("Unable to start PKCS11 rw session");
+			}
+			if (PKCS11_login(slot, 0, options.hsm_pin.c_str()) != 0) {
+				throw std::runtime_error("Unable to login to PKCS11 token");
+			}
+		}
+		// Generates RSA:2048. API doesn't allow to generate EC key pairs yet
+		if (PKCS11_generate_key(tok, 0, 2048, strdup(hsm_tls_key_label.c_str()), (unsigned char *)&hsm_tls_key_id, sizeof(hsm_tls_key_id)) !=0) {
+			throw std::runtime_error("Couldn't create RSA keys");
+		}
+		if (PKCS11_logout(slot) != 0) {
+			throw std::runtime_error("Unable to logout from PKCS11 token");
+		}
+		PKCS11_is_logged_in(slot, 0, &rv);
+		if (rv == 0) {
+			if (PKCS11_open_session(slot, 0) != 0) {
+				throw std::runtime_error("Couldn't open PKCS11 ro session");
+			}
+			if (PKCS11_login(slot, 0, options.hsm_pin.c_str()) != 0) {
+				throw std::runtime_error("Couldn't log into PKCS11 (ro)");
+			}
+		}
+		if (PKCS11_enumerate_public_keys(slot->token, &p11_keys, &p11_keys_n) != 0) {
+			throw std::runtime_error("Unable to enumerate PKCS11 public keys");
+		}
+		for (unsigned int j = 0; j < p11_keys_n; j++, p11_keys++) {
+			if (p11_keys != NULL && p11_keys->label != NULL && p11_keys->label == hsm_tls_key_label) {
+				p11_public_key = p11_keys;
+				break;
+			}
+		}
+		public_key = PKCS11_get_public_key(p11_public_key);
+		if (X509_REQ_set_pubkey(x509_req, public_key) != 1) {
+			throw std::runtime_error("Unable to set public key on CSR");
+		}
+		if (PKCS11_enumerate_keys(slot->token, &p11_keys, &p11_keys_n) != 0) {
+			throw std::runtime_error("Unable to enumerate PKCS11 public keys");
+		}
+		for (unsigned int k = 0; k < p11_keys_n; k++, p11_keys++) {
+			if (p11_keys != NULL && p11_keys->label != NULL && p11_keys->label == hsm_tls_key_label) {
+				p11_private_key = p11_keys;
+				break;
+			}
+		}
+		private_key = PKCS11_get_private_key(p11_private_key);
+
+		X509_REQ_sign(x509_req, private_key, EVP_sha256());    // returns 0 in case of HSM
+
+		if (PEM_write_bio_X509_REQ(out, x509_req) != 1) {
+			throw std::runtime_error("Unable to write CSR to BIO");
+		}
+		if (PKCS11_logout(slot) != 0) {
+			throw std::runtime_error("Unable to logout from PKCS11 token");
+		}
+
+		EVP_PKEY_free(public_key);
+		EVP_PKEY_free(private_key);
+
+		if (ctx != nullptr) {
+			PKCS11_release_all_slots(ctx, slots_, nslots);
+			PKCS11_CTX_unload(ctx);
+			PKCS11_CTX_free(ctx);
+		}
+		pkey = string(reinterpret_cast<const char*>(&hsm_tls_key_id));
 	}
+	// terminate the char * with null to avoid garbage in the string representation
+	BIO_write(out, "\0", 1);
+	BIO_get_mem_ptr(out, &bptr);
+	string csr(bptr->data);
+	bptr->data = NULL;
+
+	X509_REQ_free(x509_req);
+	BIO_free_all(out);
+
+	return std::make_tuple(pkey, csr);
 }
 
 static string _get_oauth_token(const string &factory, const string &device_uuid)
@@ -457,6 +597,7 @@ static string _get_oauth_token(const string &factory, const string &device_uuid)
 	}
 
 	data = "client_id=" + device_uuid;
+	cout << "Using " << data << endl;
 	data += "&scope=" + factory + ":devices:create";
 
 	gint64 code = Curl(url + "/authorization/device/").Post(headers, data, json);
@@ -549,27 +690,48 @@ static bool ends_with(const std::string &s, const std::string &suffix)
 }
 
 static string get_device_id(const Options& options) {
-  string uuid; // resultant device ID, must be in UUID format
-  // Ensure a UUID is available.
-  if (!options.uuid.empty()) {
-    uuid = options.uuid;
-  } else if (!options.hsm_module.empty()) {
-    // Fetch from PKCS11 if available as part of the slot information
-    string slot_info = _pkcs11_tool(options.hsm_module, "--list-slots");
-    std::regex re("(Slot .*: )([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})");
-    std::smatch match;
-    std::regex_search(slot_info, match, re);
-    if (match.size() > 2) {
-      uuid = match.str(2);
-    }
-  }
-  // If ID is not specified as a command line param and cannot be fecthed from PKCS11 (slot uuid)
-  // then just use boost uuid generator (why not use it by default ???)
-  if (uuid.empty()) {
-    boost::uuids::uuid tmp = boost::uuids::random_generator()();
-    uuid = boost::uuids::to_string(tmp);
-  }
-  return uuid;
+	string uuid; // resultant device ID, must be in UUID format
+	PKCS11_CTX * ctx; // PKCS11 context
+	PKCS11_SLOT * slots_;
+	unsigned int nslots;
+	PKCS11_SLOT * slot{nullptr};
+	// Ensure a UUID is available.
+	if (!options.uuid.empty()) {
+		uuid = options.uuid;
+	} else if (!options.hsm_module.empty()) {
+		// Fetch from PKCS11 if available as part of the slot information
+		ctx = PKCS11_CTX_new();
+		if (PKCS11_CTX_load(ctx, options.hsm_module.c_str()) != 0) {
+			PKCS11_CTX_free(ctx);
+			throw std::runtime_error("Couldn't load PKCS11 module");
+		}
+		// Initialize the HSM and create a key in it.
+		if (PKCS11_enumerate_slots(ctx, &slots_, &nslots) != 0) {
+			throw std::runtime_error("Couldn't enumerate PKCS11 slots");
+		}
+		slot = slots_;
+		if (nslots > 1) {
+			slot = &slots_[0];
+		}
+		if (slot == nullptr) {
+			throw std::runtime_error("Slot not found");
+		}
+		// Assume all slots have the same description (UUID)
+		uuid = slot->description;
+
+		if (ctx != nullptr) {
+			PKCS11_release_all_slots(ctx, slots_, nslots);
+			PKCS11_CTX_unload(ctx);
+			PKCS11_CTX_free(ctx);
+		}
+	}
+	// If ID is not specified as a command line param and cannot be fecthed from PKCS11 (slot uuid)
+	// then just use boost uuid generator (why not use it by default ???)
+	if (uuid.empty()) {
+		boost::uuids::uuid tmp = boost::uuids::random_generator()();
+		uuid = boost::uuids::to_string(tmp);
+	}
+	return uuid;
 }
 
 int main(int argc, char **argv)
@@ -712,8 +874,9 @@ int main(int argc, char **argv)
 			out << "[p11]" << endl;
 			out << "module = \"" << options.hsm_module << "\"" << endl;
 			out << "pass = \"" << options.hsm_pin << "\"" << endl;
-			out << "tls_pkey_id = \"" << hsm_tls_key_id << "\"" << endl;
-			out << "tls_clientcert_id = \"" << hsm_client_cert_id << "\"" << endl;
+			out << "label = \"" << hsm_token_label << "\"" << endl;
+			out << "tls_pkey_id = \"" << std::setfill('0') << std::setw(2) << +hsm_tls_key_id << "\"" << endl;
+			out << "tls_clientcert_id = \"" << std::setfill('0') << std::setw(2) << +hsm_client_cert_id << "\"" << endl;
 			out << endl;
 		}
 
@@ -722,10 +885,78 @@ int main(int argc, char **argv)
 		if (!options.hsm_module.empty() && ends_with(name, ".pem")) {
 			// The client cert is now saved on disk, but  needs to be stored in
 			// the HSM. The copy we leave in sota_config_dir is just a "courtesy".
-			TempDir tmp_dir;
-			string client_der = tmp_dir.GetPath() + "/client.der";
-			_spawn("openssl x509 -inform pem -in " + name + string(" -out ").append(client_der));
-			_pkcs11_tool(options.hsm_module, "-w " + client_der + string(" -y cert --id ").append(hsm_client_cert_id), options.hsm_pin);
+			PKCS11_CTX * ctx; // PKCS11 context
+			PKCS11_SLOT * slots_;
+			unsigned int nslots;
+			PKCS11_SLOT * slot{nullptr};
+			PKCS11_TOKEN * tok;
+			X509* cert{nullptr};
+			FILE * cert_fp ;
+			char * cert_label{nullptr};
+			int rv;
+
+			cert_fp = fopen(name.c_str(), "rb");
+			if (!cert_fp) {
+				throw std::runtime_error("Could not open certificate file");
+			}
+			cert = PEM_read_X509(cert_fp, NULL, 0, NULL);
+			if (!cert) {
+				throw std::runtime_error("Could not read certificate file");
+			}
+
+			if (cert_fp) {
+				fclose(cert_fp);
+			}
+
+			ctx = PKCS11_CTX_new();
+			if (PKCS11_CTX_load(ctx, options.hsm_module.c_str()) != 0) {
+				PKCS11_CTX_free(ctx);
+				throw std::runtime_error("Couldn't load PKCS11 module");
+			}
+			// Initialize the HSM and create a key in it.
+			if (PKCS11_enumerate_slots(ctx, &slots_, &nslots) != 0) {
+				// throw some error and exit
+				throw std::runtime_error("Couldn't enumerate PKCS11 slots");
+			}
+			for (unsigned int i = 0; i < nslots; i++, slots_++) {
+				if (slots_ != nullptr  && (tok = slots_->token) != nullptr) {
+					if (hsm_token_label == tok->label) {
+						slot = slots_;
+						break;
+					}
+				}
+			}
+			if ((slot == nullptr) || (slot->token == nullptr)) {
+				throw std::runtime_error("PKCS11 token not initilized");
+			}
+			PKCS11_is_logged_in(slot, 1, &rv);
+			if (rv == 0) {
+				if (PKCS11_open_session(slot, 1) != 0) {
+					throw std::runtime_error("Unable to start PKCS11 rw session");
+				}
+				if (PKCS11_login(slot, 0, options.hsm_pin.c_str()) != 0) {
+					throw std::runtime_error("Unable to login to PKCS11 token");
+				}
+			}
+
+			cert_label = strdup(hsm_client_cert_label.c_str());
+			cout << "Preparing to store cert from " << name << " to pkcs11 token with label " << slot->token->label << endl;
+			if (PKCS11_store_certificate(slot->token,
+				     cert,
+				     cert_label,
+				     (unsigned char *)&hsm_client_cert_id,
+				     sizeof(hsm_client_cert_id),
+				     NULL) != 0) {
+				throw std::runtime_error("Could not store certificate");
+			}
+			if (PKCS11_logout(slot) != 0) {
+				throw std::runtime_error("Unable to logout from PKCS11 token");
+			}
+			if (ctx != nullptr) {
+				PKCS11_release_all_slots(ctx, slots_, nslots);
+				PKCS11_CTX_unload(ctx);
+				PKCS11_CTX_free(ctx);
+			}
 		}
 	}
 	cout << "Device is now registered." << endl;
