@@ -454,6 +454,19 @@ static std::tuple<string, string> _create_cert(const Options &options, const str
 		PKCS11_KEY * p11_private_key{nullptr};
 		unsigned int p11_keys_n;
 
+		PKCS11_EC_KGEN ec = {
+			.curve = "P-256"
+		};
+		PKCS11_KGEN_ATTRS eckg =
+		{
+			.type = EVP_PKEY_EC,
+			.token_label = hsm_token_label.c_str(),
+			.key_label = hsm_tls_key_label.c_str(),
+			.key_id = (char*)&hsm_tls_key_id,
+		};
+		eckg.kgen.ec = &ec;
+
+
 		ctx = PKCS11_CTX_new();
 		if (PKCS11_CTX_load(ctx, options.hsm_module.c_str()) != 0) {
 			PKCS11_CTX_free(ctx);
@@ -514,7 +527,7 @@ static std::tuple<string, string> _create_cert(const Options &options, const str
 			}
 		}
 		// Generates RSA:2048. API doesn't allow to generate EC key pairs yet
-		if (PKCS11_generate_key(tok, 0, 2048, strdup(hsm_tls_key_label.c_str()), (unsigned char *)&hsm_tls_key_id, sizeof(hsm_tls_key_id)) !=0) {
+		if (PKCS11_generate_key(tok, &eckg) !=0) {
 			throw std::runtime_error("Couldn't create RSA keys");
 		}
 		if (PKCS11_logout(slot) != 0) {
