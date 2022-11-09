@@ -50,7 +50,7 @@ using std::stringstream;
 
 // OpenSSL works with object labels, while aktualizr works with IDs.
 static const string hsm_token_label = "aktualizr";
-static const unsigned char hsm_tls_key_id = 1;           // TLS key ID on HSM, when used (for sota.toml)
+static const string hsm_tls_key_id = "1";           // TLS key ID on HSM, when used (for sota.toml)
 static const unsigned char hsm_client_cert_id = 3;       // Client certificate's ID on HSM, when used (for sota.toml)
 static const string hsm_tls_key_label = "tls";       // TLS key label on HSM, when used (for OpenSSL)
 static const string hsm_client_cert_label = "client"; // Uptane key label on HSM, when used (for OpenSSL)
@@ -462,7 +462,7 @@ static std::tuple<string, string> _create_cert(const Options &options, const str
 			.type = EVP_PKEY_EC,
 			.token_label = hsm_token_label.c_str(),
 			.key_label = hsm_tls_key_label.c_str(),
-			.key_id = (char*)&hsm_tls_key_id,
+			.key_id = hsm_tls_key_id.c_str(),
 		};
 		eckg.kgen.ec = &ec;
 
@@ -526,9 +526,9 @@ static std::tuple<string, string> _create_cert(const Options &options, const str
 				throw std::runtime_error("Unable to login to PKCS11 token");
 			}
 		}
-		// Generates RSA:2048. API doesn't allow to generate EC key pairs yet
+
 		if (PKCS11_generate_key(tok, &eckg) !=0) {
-			throw std::runtime_error("Couldn't create RSA keys");
+			throw std::runtime_error("Couldn't create EC keys");
 		}
 		if (PKCS11_logout(slot) != 0) {
 			throw std::runtime_error("Unable to logout from PKCS11 token");
@@ -583,7 +583,7 @@ static std::tuple<string, string> _create_cert(const Options &options, const str
 			PKCS11_CTX_unload(ctx);
 			PKCS11_CTX_free(ctx);
 		}
-		pkey = string(reinterpret_cast<const char*>(&hsm_tls_key_id));
+		pkey = string(hsm_tls_key_id);
 	}
 	// terminate the char * with null to avoid garbage in the string representation
 	BIO_write(out, "\0", 1);
@@ -888,7 +888,7 @@ int main(int argc, char **argv)
 			out << "module = \"" << options.hsm_module << "\"" << endl;
 			out << "pass = \"" << options.hsm_pin << "\"" << endl;
 			out << "label = \"" << hsm_token_label << "\"" << endl;
-			out << "tls_pkey_id = \"" << std::setfill('0') << std::setw(2) << +hsm_tls_key_id << "\"" << endl;
+			out << "tls_pkey_id = \"" << std::setfill('0') << std::setw(2) << hsm_tls_key_id << "\"" << endl;
 			out << "tls_clientcert_id = \"" << std::setfill('0') << std::setw(2) << +hsm_client_cert_id << "\"" << endl;
 			out << endl;
 		}
