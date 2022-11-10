@@ -730,7 +730,13 @@ static string get_device_id(const Options& options) {
 			throw std::runtime_error("Slot not found");
 		}
 		// Assume all slots have the same description (UUID)
-		uuid = slot->description;
+		string slot_info = string(slot->description);
+		std::regex re("([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})");
+		std::smatch match;
+		std::regex_search(slot_info, match, re);
+		if (match.size() > 0) {
+			uuid = match.str(1);
+		}
 
 		if (ctx != nullptr) {
 			PKCS11_release_all_slots(ctx, slots_, nslots);
