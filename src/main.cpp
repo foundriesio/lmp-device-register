@@ -685,7 +685,15 @@ int main(int argc, char **argv)
 			cerr << resp.data() << endl;
 		}
 		for (auto it: resp) {
-			cerr << it.first << ": " << it.second.data() << endl;
+			const auto resp_elem{it.first};
+			if (resp_elem == "errors") {
+				cerr << resp_elem << ":" << endl;
+				for (auto it_err: it.second) {
+					cerr << '\t' << it_err.first << ": " << it_err.second.data() << endl;
+				}
+			} else {
+				cerr << it.first << ": " << it.second.data() << endl;
+			}
 		}
 		exit(EXIT_FAILURE);
 	}
