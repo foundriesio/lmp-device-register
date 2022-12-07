@@ -518,9 +518,10 @@ static void _assert_permissions(const string &sota_config_dir)
 
 static void _assert_not_registered(const string &sota_config_dir)
 {
-	string path = sota_config_dir + "/sql.db";
-	if (access(path.c_str(), F_OK ) == 0 ) {
-		cerr << "ERROR: Device appears to already be registered in " << path << endl;
+	const string db_path{sota_config_dir + "/sql.db"};
+	const string cert_path{sota_config_dir + "/client.pem"};
+	if (access(db_path.c_str(), F_OK) == 0 && access(cert_path.c_str(), F_OK) == 0) {
+		cerr << "ERROR: Device appears to already be registered in " <<  sota_config_dir << endl;
 		exit(EXIT_FAILURE);
 	}
 }
