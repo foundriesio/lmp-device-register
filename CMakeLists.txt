@@ -71,7 +71,7 @@ set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake-modules)
 
 # find all required libraries
 set(Boost_USE_STATIC_LIBS ON)
-find_package(Boost COMPONENTS filesystem program_options system REQUIRED)
+find_package(Boost COMPONENTS filesystem iostreams program_options system REQUIRED)
 find_package(CURL REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_search_module(GLIB REQUIRED glib-2.0)

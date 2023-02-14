@@ -10,7 +10,10 @@
 #include <curl/curl.h>
 #include <glib.h>
 #include <sys/stat.h>
+#include <stdio.h>
+#include <unistd.h>
 
+#include <exception>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -19,6 +22,8 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/beast/core/detail/base64.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/iostreams/device/file_descriptor.hpp>
+#include <boost/iostreams/stream.hpp>
 #include <boost/program_options.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -573,6 +578,31 @@ static string get_device_id(const Options& options) {
   return uuid;
 }
 
+// Write a file safely and atomically to disk
+static void write_safely(const string &name, const string &content) {
+	auto tmp = name + ".tmp";
+
+	try {
+		boost::iostreams::stream<boost::iostreams::file_descriptor_sink> file(tmp);
+		file << content;
+
+		file.flush();
+		int rc = fsync(file->handle());
+		if (rc != 0) {
+			cerr << "Unable to write to " << tmp << ": " << strerror(errno) << endl;
+			exit(1);
+		}
+	} catch (const std::exception& e) {
+		cerr << "Unable to open " << tmp << " for writing: " << e.what() << endl;
+		exit(1);
+	}
+	int rc = rename(tmp.c_str(), name.c_str());
+	if (rc != 0) {
+		cerr << "Unable to create " << name << ": " << strerror(errno) << endl;
+		exit(1);
+	}
+}
+
 int main(int argc, char **argv)
 {
 	Options options;
@@ -707,26 +737,26 @@ int main(int argc, char **argv)
 		out << pkey;
 		out.close();
 	}
+	stringstream sota_toml;
 	for (auto it: resp) {
 		string name = options.sota_config_dir + "/" + it.first;
-		std::ofstream out(name);
 
-		out << it.second.data();
-
-		if (!options.hsm_module.empty() && ends_with(name, ".toml")) {
-			// We additionally write the entire p11 section. (We can't tell the server
-			// the PIN, and don't want to parse/modify TOML to add it, so just write
-			// the whole thing.)
-			out << endl;
-			out << "[p11]" << endl;
-			out << "module = \"" << options.hsm_module << "\"" << endl;
-			out << "pass = \"" << options.hsm_pin << "\"" << endl;
-			out << "tls_pkey_id = \"" << hsm_tls_key_id << "\"" << endl;
-			out << "tls_clientcert_id = \"" << hsm_client_cert_id << "\"" << endl;
-			out << endl;
+		if (ends_with(name, "sota.toml")) {
+			sota_toml << it.second.data() << endl;
+			if (!options.hsm_module.empty()) {
+				// We additionally write the entire p11 section. (We can't tell the server
+				// the PIN, and don't want to parse/modify TOML to add it, so just write
+				// the whole thing.)
+				sota_toml << "[p11]" << endl;
+				sota_toml << "module = \"" << options.hsm_module << "\"" << endl;
+				sota_toml << "pass = \"" << options.hsm_pin << "\"" << endl;
+				sota_toml << "tls_pkey_id = \"" << hsm_tls_key_id << "\"" << endl;
+				sota_toml << "tls_clientcert_id = \"" << hsm_client_cert_id << "\"" << endl;
+				sota_toml << endl;
+			}
+		} else {
+			write_safely(name, it.second.data());
 		}
-
-		out.close();
 
 		if (!options.hsm_module.empty() && ends_with(name, ".pem")) {
 			// The client cert is now saved on disk, but  needs to be stored in
@@ -737,6 +767,7 @@ int main(int argc, char **argv)
 			_pkcs11_tool(options.hsm_module, "-w " + client_der + string(" -y cert --id ").append(hsm_client_cert_id), options.hsm_pin);
 		}
 	}
+	write_safely(options.sota_config_dir + "/sota.toml", sota_toml.str());
 	cout << "Device is now registered." << endl;
 
 	if (options.start_daemon) {
