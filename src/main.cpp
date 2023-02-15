@@ -95,7 +95,7 @@ static bool _get_options(int argc, char **argv, Options &options, OsRelease &osr
 {
 	po::options_description desc("lmp-device-register options");
 	desc.add_options()
-		("help", "print usage")
+		("help", "Print usage")
 
 		("sota-dir,d", po::value<string>(&options.sota_config_dir)->default_value("/var/sota"),
 		 "The directory to install to keys and configuration to.")
@@ -136,7 +136,7 @@ static bool _get_options(int argc, char **argv, Options &options, OsRelease &osr
 		 "Use an API token for authentication. If not specified, oauth2 will be used")
 
 		("api-token-header,H", po::value<string>(&options.api_token_header)->default_value("OSF-TOKEN"),
-		 "Specify a HTTP header to be used for authentication. Defaults to \"OSF-TOKEN\".")
+		 "Specify a HTTP header to be used for authentication.")
 
 		("start-daemon", po::value<bool>(&options.start_daemon)->default_value(true),
 		 "Start the " SOTA_CLIENT " systemd service automatically after performing the registration.")
