@@ -606,9 +606,18 @@ int main(int argc, char **argv)
 {
 	OsRelease osrelease;
 	parse_os_release(osrelease);
+	if (osrelease.factory == "lmp") {
+		// This is a public LmP build, you can't register a device to it
+		osrelease.factory = "";
+	}
 
 	Options options;
 	if (!_get_options(argc, argv, options, osrelease)) {
+		return EXIT_FAILURE;
+	}
+
+	if (options.factory.empty()) {
+		cerr << "--factory <factory> required" << endl;
 		return EXIT_FAILURE;
 	}
 
