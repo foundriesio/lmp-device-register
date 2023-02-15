@@ -78,18 +78,6 @@ struct Options {
 	bool is_prod;
 };
 
-static void _set_factory_option(std::string& factory) {
-	const char* device_factory_env_var = std::getenv("DEVICE_FACTORY");
-	if (device_factory_env_var != nullptr) {
-		cout << "Using the device factory specified via the environment variable: "
-				 << device_factory_env_var << endl;
-		factory = device_factory_env_var;
-	}
-	if (factory.empty()) {
-		throw std::invalid_argument("Empty value of the device factory parameter");
-	}
-}
-
 static void _set_prod_option(bool& is_prod) {
 #ifdef PRODUCTION
 	is_prod = true;
@@ -138,6 +126,9 @@ static bool _get_options(int argc, char **argv, Options &options, OsRelease &osr
 		("name,n", po::value<string>(&options.name),
 		 "The name of the device as it should appear in the dashboard. If not specified, it will use the device's UUID")
 
+		("factory,f", po::value<string>(&options.factory)->default_value(osrelease.factory),
+		 "The factory to register to.")
+
 		("device-group,g", po::value<string>(&options.device_group),
 		 "Assign the device into a device group")
 
@@ -165,9 +156,6 @@ static bool _get_options(int argc, char **argv, Options &options, OsRelease &osr
 
 	po::options_description all_options("lmp-device-register all options");
 	all_options.add(desc);
-	all_options.add_options()
-		("stream,s", po::value<string>(&options.factory)->default_value(DEVICE_FACTORY),
-		 "The update factory to subscribe to: " DEVICE_FACTORY);
 
 	po::variables_map vm;
 	try {
@@ -178,7 +166,6 @@ static bool _get_options(int argc, char **argv, Options &options, OsRelease &osr
 			return false;
 		}
 		po::notify(vm);
-		_set_factory_option(options.factory);
 		_set_prod_option(options.is_prod);
 	} catch (const po::error &o) {
 		cout << "ERROR: " << o.what() << endl;
