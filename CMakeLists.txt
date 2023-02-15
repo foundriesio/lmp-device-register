@@ -6,17 +6,6 @@ cmake_minimum_required (VERSION 3.5)
 
 project(lmp-device-register)
 
-option(AKLITE_TAGS "Set to ON to compile with support of aktualizr-lite tag filtering" OFF)
-if(AKLITE_TAGS)
-    add_definitions(-DAKLITE_TAGS)
-    message(STATUS "Enabling aktualir-lite tag support")
-
-    if (DEFINED DEFAULT_TAG)
-        add_definitions(-DDEFAULT_TAG="${DEFAULT_TAG}")
-        message(STATUS "Setting DEFAULT_TAG to ${DEFAULT_TAG}")
-    endif (DEFINED DEFAULT_TAG)
-endif(AKLITE_TAGS)
-
 option(DOCKER_COMPOSE_APP "Set to ON to compile with support for configuring compose-apps" OFF)
 
 if(DOCKER_COMPOSE_APP)

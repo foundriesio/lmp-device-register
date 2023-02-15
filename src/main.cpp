@@ -70,9 +70,7 @@ struct Options {
 	string sota_config_dir;
 	bool start_daemon;
 	bool use_ostree_server;
-#ifdef AKLITE_TAGS
 	string pacman_tags;
-#endif
 #if defined DOCKER_COMPOSE_APP
 	string apps;
 	string restorable_apps;
@@ -114,15 +112,8 @@ static bool _get_options(int argc, char **argv, Options &options, OsRelease &osr
 		("sota-dir,d", po::value<string>(&options.sota_config_dir)->default_value("/var/sota"),
 		 "The directory to install to keys and configuration to.")
 
-#ifdef AKLITE_TAGS
-#ifdef DEFAULT_TAG
-		("tags,t", po::value<string>(&options.pacman_tags)->default_value(DEFAULT_TAG),
-		 "Configure " SOTA_CLIENT " to only apply updates from Targets with these tags. Default is " DEFAULT_TAG)
-#else
-		("tags,t", po::value<string>(&options.pacman_tags),
-		 "Configure " SOTA_CLIENT " to only apply updates from Targets with these tags.")
-#endif
-#endif
+		("tags,t", po::value<string>(&options.pacman_tags)->default_value(osrelease.tag),
+		 "Configure " SOTA_CLIENT " to only apply updates from Targets with this tag.")
 #if defined DOCKER_COMPOSE_APP
 		("apps,a", po::value<string>(&options.apps),
 		"Configure package-manager for this comma separate list of apps.")
@@ -706,11 +697,9 @@ int main(int argc, char **argv)
 		device.put("overrides.import.tls_pkey_path", "");
 		device.put("overrides.import.tls_clientcert_path", "");
 	}
-#ifdef AKLITE_TAGS
 	if (!options.pacman_tags.empty()) {
 		device.put("overrides.pacman.tags", "\"" + options.pacman_tags + "\"");
 	}
-#endif
 #ifdef DOCKER_COMPOSE_APP
 	string apps_root = options.sota_config_dir + "/compose-apps";
 	device.put("overrides.pacman.type", "\"ostree+compose_apps\"");
