@@ -30,12 +30,6 @@ if(PRODUCTION)
     message(STATUS "Enabling production client certificates")
 endif(PRODUCTION)
 
-IF (NOT DEFINED HARDWARE_ID)
-    message(FATAL_ERROR "Missing required value: HARDWARE_ID")
-ENDIF()
-ADD_DEFINITIONS(-DHARDWARE_ID="${HARDWARE_ID}")
-message(STATUS "Setting HARDWARE_ID to ${HARDWARE_ID}")
-
 IF (NOT DEFINED DEVICE_FACTORY)
     IF(NOT DEFINED DEVICE_STREAMS)
         message(FATAL_ERROR "Missing required value: DEVICE_FACTORY or DEVICE_STREAMS")

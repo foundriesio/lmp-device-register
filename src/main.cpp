@@ -136,8 +136,8 @@ static bool _get_options(int argc, char **argv, Options &options, OsRelease &osr
 		 " the resultant list will be equal to the `apps` list."
 		 " Restorable App list = UNION(compose-apps, restorable-apps)")
 #endif
-		("hwid,i", po::value<string>(&options.hwid)->default_value(HARDWARE_ID),
-		 "An identifier for the device's hardware type. Default is " HARDWARE_ID)
+		("hwid,i", po::value<string>(&options.hwid)->default_value(osrelease.hwid),
+		 "An identifier for the device's hardware type.")
 
 		("uuid,u", po::value<string>(&options.uuid),
 		 "A per-device UUID. If not provided, one will be generated. "
