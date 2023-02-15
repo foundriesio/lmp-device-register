@@ -25,6 +25,7 @@
 #include <boost/iostreams/device/file_descriptor.hpp>
 #include <boost/iostreams/stream.hpp>
 #include <boost/program_options.hpp>
+#include <boost/property_tree/ini_parser.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/uuid/uuid_generators.hpp>
@@ -48,6 +49,12 @@ static const string hsm_client_cert_label = "client"; // Uptane key label on HSM
 
 static char WHEELS[] = {'|', '/', '-', '\\'};
 typedef std::map<std::string, string> http_headers;
+
+struct OsRelease {
+	string factory;
+	string tag;
+	string hwid;
+};
 
 struct Options {
 	string api_token;
@@ -98,7 +105,7 @@ static void _set_prod_option(bool& is_prod) {
 #endif
 }
 
-static bool _get_options(int argc, char **argv, Options &options)
+static bool _get_options(int argc, char **argv, Options &options, OsRelease &osrelease)
 {
 	po::options_description desc("lmp-device-register options");
 	desc.add_options()
@@ -603,10 +610,27 @@ static void write_safely(const string &name, const string &content) {
 	}
 }
 
+static string pt_str(const ptree &pt, const string& key) {
+	auto val = pt.get<std::string>(key);
+	val.erase(std::remove(val.begin(), val.end(), '\"'), val.end());
+	return val;
+}
+
+static void parse_os_release(OsRelease &osrelease) {
+	ptree pt;
+	boost::property_tree::ini_parser::read_ini("/etc/os-release", pt);
+	osrelease.factory = pt_str(pt, "LMP_FACTORY");
+	osrelease.hwid = pt_str(pt, "LMP_MACHINE");
+	osrelease.tag = pt_str(pt, "LMP_FACTORY_TAG");
+}
+
 int main(int argc, char **argv)
 {
+	OsRelease osrelease;
+	parse_os_release(osrelease);
+
 	Options options;
-	if (!_get_options(argc, argv, options)) {
+	if (!_get_options(argc, argv, options, osrelease)) {
 		return EXIT_FAILURE;
 	}
 
