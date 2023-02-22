@@ -6,17 +6,6 @@ cmake_minimum_required (VERSION 3.5)
 
 project(lmp-device-register)
 
-option(AKLITE_TAGS "Set to ON to compile with support of aktualizr-lite tag filtering" OFF)
-if(AKLITE_TAGS)
-    add_definitions(-DAKLITE_TAGS)
-    message(STATUS "Enabling aktualir-lite tag support")
-
-    if (DEFINED DEFAULT_TAG)
-        add_definitions(-DDEFAULT_TAG="${DEFAULT_TAG}")
-        message(STATUS "Setting DEFAULT_TAG to ${DEFAULT_TAG}")
-    endif (DEFINED DEFAULT_TAG)
-endif(AKLITE_TAGS)
-
 option(DOCKER_COMPOSE_APP "Set to ON to compile with support for configuring compose-apps" OFF)
 
 if(DOCKER_COMPOSE_APP)
@@ -35,16 +24,6 @@ IF (NOT DEFINED HARDWARE_ID)
 ENDIF()
 ADD_DEFINITIONS(-DHARDWARE_ID="${HARDWARE_ID}")
 message(STATUS "Setting HARDWARE_ID to ${HARDWARE_ID}")
-
-IF (NOT DEFINED DEVICE_FACTORY)
-    IF(NOT DEFINED DEVICE_STREAMS)
-        message(FATAL_ERROR "Missing required value: DEVICE_FACTORY or DEVICE_STREAMS")
-    ENDIF()
-    message(STATUS "Using DEVICE_STREAMS as DEVICE_FACTORY value (${DEVICE_STREAMS})")
-    SET(DEVICE_FACTORY ${DEVICE_STREAMS})
-ENDIF()
-ADD_DEFINITIONS(-DDEVICE_FACTORY="${DEVICE_FACTORY}")
-message(STATUS "Setting DEVICE_FACTORY to ${DEVICE_FACTORY}")
 
 IF (NOT DEFINED DEVICE_API)
     SET(DEVICE_API "https://api.foundries.io/ota/devices/")

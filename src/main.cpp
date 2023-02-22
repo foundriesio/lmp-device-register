@@ -26,6 +26,7 @@
 #include <boost/iostreams/stream.hpp>
 #include <boost/program_options.hpp>
 #include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ini_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
@@ -45,6 +46,7 @@ static const string hsm_tls_key_id = "01";           // TLS key ID on HSM, when 
 static const string hsm_client_cert_id = "03";       // Client certificate's ID on HSM, when used (for sota.toml)
 static const string hsm_tls_key_label = "tls";       // TLS key label on HSM, when used (for OpenSSL)
 static const string hsm_client_cert_label = "client"; // Uptane key label on HSM, when used (for OpenSSL)
+static const string os_release_filename = "/etc/os-release";
 
 static char WHEELS[] = {'|', '/', '-', '\\'};
 typedef std::map<std::string, string> http_headers;
@@ -63,9 +65,7 @@ struct Options {
 	string sota_config_dir;
 	bool start_daemon;
 	bool use_ostree_server;
-#ifdef AKLITE_TAGS
 	string pacman_tags;
-#endif
 #if defined DOCKER_COMPOSE_APP
 	string apps;
 	string restorable_apps;
@@ -73,15 +73,41 @@ struct Options {
 	bool is_prod;
 };
 
-static void _set_factory_option(std::string& factory) {
+static void _set_default_options(string & factory, string & pacman_tags) {
+
 	const char* device_factory_env_var = std::getenv("DEVICE_FACTORY");
+	ptree os_tree;
 	if (device_factory_env_var != nullptr) {
 		cout << "Using the device factory specified via the environment variable: "
 				 << device_factory_env_var << endl;
 		factory = device_factory_env_var;
 	}
-	if (factory.empty()) {
-		throw std::invalid_argument("Empty value of the device factory parameter");
+	if (boost::filesystem::exists(os_release_filename)) {
+		try{
+		read_ini(os_release_filename, os_tree);
+		}
+		catch (boost::property_tree::ini_parser_error const&){
+			cout << "Unable to parse ini file " << os_release_filename << endl;
+			return;
+		}
+		if (factory.empty()) {
+			try {
+				// value comes with ""
+				factory = os_tree.get<std::string>("LMP_FACTORY");
+				boost::algorithm::erase_all(factory, "\"");
+			}
+			catch (boost::property_tree::ptree_bad_path const&) {
+				cout << "Unable to read factory setting from "<< os_release_filename << endl;
+			}
+		}
+		try {
+			// value comes with ""
+			pacman_tags = os_tree.get<std::string>("LMP_FACTORY_TAG");
+			boost::algorithm::erase_all(pacman_tags, "\"");
+		}
+		catch (boost::property_tree::ptree_bad_path const&) {
+			cout << "Unable to read tags setting from "<< os_release_filename << endl;
+		}
 	}
 }
 
@@ -100,6 +126,9 @@ static void _set_prod_option(bool& is_prod) {
 
 static bool _get_options(int argc, char **argv, Options &options)
 {
+	string factory;
+	string pacman_tags;
+	_set_default_options(factory, pacman_tags);
 	po::options_description desc("lmp-device-register options");
 	desc.add_options()
 		("help", "print usage")
@@ -107,15 +136,8 @@ static bool _get_options(int argc, char **argv, Options &options)
 		("sota-dir,d", po::value<string>(&options.sota_config_dir)->default_value("/var/sota"),
 		 "The directory to install to keys and configuration to.")
 
-#ifdef AKLITE_TAGS
-#ifdef DEFAULT_TAG
-		("tags,t", po::value<string>(&options.pacman_tags)->default_value(DEFAULT_TAG),
-		 "Configure " SOTA_CLIENT " to only apply updates from Targets with these tags. Default is " DEFAULT_TAG)
-#else
-		("tags,t", po::value<string>(&options.pacman_tags),
+		("tags,t", po::value<string>(&options.pacman_tags)->default_value(pacman_tags),
 		 "Configure " SOTA_CLIENT " to only apply updates from Targets with these tags.")
-#endif
-#endif
 #if defined DOCKER_COMPOSE_APP
 		("apps,a", po::value<string>(&options.apps),
 		"Configure package-manager for this comma separate list of apps.")
@@ -163,13 +185,13 @@ static bool _get_options(int argc, char **argv, Options &options)
 		 "using one.")
 
 		("hsm-pin,P", po::value<string>(&options.hsm_pin),
-		 "The PKCS#11 PIN to set up on the HSM, if using one.");
+		 "The PKCS#11 PIN to set up on the HSM, if using one.")
+
+		("factory,f", po::value<string>(&options.factory)->default_value(factory),
+		 "The factory name to subscribe to");
 
 	po::options_description all_options("lmp-device-register all options");
 	all_options.add(desc);
-	all_options.add_options()
-		("stream,s", po::value<string>(&options.factory)->default_value(DEVICE_FACTORY),
-		 "The update factory to subscribe to: " DEVICE_FACTORY);
 
 	po::variables_map vm;
 	try {
@@ -180,8 +202,14 @@ static bool _get_options(int argc, char **argv, Options &options)
 			return false;
 		}
 		po::notify(vm);
-		_set_factory_option(options.factory);
 		_set_prod_option(options.is_prod);
+
+		if (factory.empty()) {
+			throw po::error("Missing value of the device factory parameter");
+		}
+		if (options.pacman_tags.empty()) {
+			throw po::error("Missing value of the tags parameter");
+		}
 	} catch (const po::error &o) {
 		cout << "ERROR: " << o.what() << endl;
 		cout << endl << desc << endl;
@@ -682,11 +710,8 @@ int main(int argc, char **argv)
 		device.put("overrides.import.tls_pkey_path", "");
 		device.put("overrides.import.tls_clientcert_path", "");
 	}
-#ifdef AKLITE_TAGS
-	if (!options.pacman_tags.empty()) {
-		device.put("overrides.pacman.tags", "\"" + options.pacman_tags + "\"");
-	}
-#endif
+	// options.pacman_tags can't be empty at this point
+	device.put("overrides.pacman.tags", "\"" + options.pacman_tags + "\"");
 #ifdef DOCKER_COMPOSE_APP
 	string apps_root = options.sota_config_dir + "/compose-apps";
 	device.put("overrides.pacman.type", "\"ostree+compose_apps\"");
