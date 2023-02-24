@@ -152,7 +152,7 @@ static bool _get_options(int argc, char **argv, Options &options)
 		 " Restorable App list = UNION(compose-apps, restorable-apps)")
 #endif
 		("hwid,i", po::value<string>(&options.hwid)->default_value(HARDWARE_ID),
-		 "An identifier for the device's hardware type. Default is " HARDWARE_ID)
+		 "An identifier for the device's hardware type.")
 
 		("uuid,u", po::value<string>(&options.uuid),
 		 "A per-device UUID. If not provided, one will be generated. "
@@ -163,13 +163,13 @@ static bool _get_options(int argc, char **argv, Options &options)
 		 "The name of the device as it should appear in the dashboard. If not specified, it will use the device's UUID")
 
 		("device-group,g", po::value<string>(&options.device_group),
-		 "Assign the device into a device group")
+		 "Assign the device into a device group.")
 
 		("api-token,T", po::value<string>(&options.api_token),
-		 "Use an API token for authentication. If not specified, oauth2 will be used")
+		 "Use an API token for authentication. If not specified, oauth2 will be used.")
 
 		("api-token-header,H", po::value<string>(&options.api_token_header)->default_value("OSF-TOKEN"),
-		 "Specify a HTTP header to be used for authentication. Defaults to \"OSF-TOKEN\".")
+		 "Specify a HTTP header to be used for authentication.")
 
 		("start-daemon", po::value<bool>(&options.start_daemon)->default_value(true),
 		 "Start the " SOTA_CLIENT " systemd service automatically after performing the registration.")
@@ -188,7 +188,7 @@ static bool _get_options(int argc, char **argv, Options &options)
 		 "The PKCS#11 PIN to set up on the HSM, if using one.")
 
 		("factory,f", po::value<string>(&options.factory)->default_value(factory),
-		 "The factory name to subscribe to");
+		 "The factory name to subscribe to.");
 
 	po::options_description all_options("lmp-device-register all options");
 	all_options.add(desc);
