@@ -371,48 +371,34 @@ static std::tuple<string, string> _create_cert(const Options &options, const str
 		std::ofstream pkey_out(pkey_file);
 		pkey_out << pkey << endl;
 		pkey_out.close();
-	} else {
-		// Initialize the HSM and create a key in it.
-		_pkcs11_tool(options.hsm_module,
-			     "--init-token --label " + hsm_token_label +
-			     " --so-pin " + options.hsm_so_pin);
-		_pkcs11_tool(options.hsm_module,
-			     "--init-pin --token-label " + hsm_token_label +
-			     " --so-pin " + options.hsm_so_pin +
-			     " --pin " + options.hsm_pin);
-		_pkcs11_tool(options.hsm_module,
-			     "--keypairgen --key-type EC:prime256v1"
-			     " --token-label " + hsm_token_label +
-			     " --id " + hsm_tls_key_id +
-			     " --label " + hsm_tls_key_label,
-			     options.hsm_pin);
 	}
-
 	// Create a CSR.
 	string csr = tmp_dir.GetPath() + "/device.csr";
 	string cnf = tmp_dir.GetPath() + "/device.cnf";
 	std::ofstream cnf_out(cnf);
 	if (!options.hsm_module.empty()) {
-		cnf_out << "openssl_conf = oc" << endl;
+		cnf_out << "openssl_conf = openssl_init" << endl;
 		cnf_out << endl;
-		cnf_out << "[oc]" << endl;
-		cnf_out << "engines = eng" << endl;
+		cnf_out << "[openssl_init]" << endl;
+		cnf_out << "providers = provider_sect" << endl;
 		cnf_out << endl;
-		cnf_out << "[eng]" << endl;
-		cnf_out << "pkcs11 = p11" << endl;
+		cnf_out << "[provider_sect]" << endl;
+		cnf_out << "default = default_sect" << endl;
+		cnf_out << "pkcs11 = pkcs11_sect" << endl;
 		cnf_out << endl;
-		cnf_out << "[p11]" << endl;
-		cnf_out << "engine_id = pkcs11" << endl;
-		cnf_out << "dynamic_path = /usr/lib/engines-3/pkcs11.so" << endl;
-		cnf_out << "MODULE_PATH = " << options.hsm_module << endl;
-		cnf_out << "PIN = " << options.hsm_pin << endl;
-		cnf_out << "init = 0" << endl;
+		cnf_out << "[default_sect]" << endl;
+		cnf_out << "activate = 0" << endl;
+		cnf_out << "[pkcs11_sect]" << endl;
+		cnf_out << "module = /usr/lib/ossl-modules/pkcs11.so" << endl;
+		cnf_out << "pkcs11-module-path = " << options.hsm_module << endl;
+		cnf_out << "activate = 0" << endl;
 		cnf_out << endl;
 	}
 	cnf_out << "[req]" << endl;
 	cnf_out << "prompt = no" << endl;
 	cnf_out << "distinguished_name = dn" << endl;
 	cnf_out << "req_extensions = ext" << endl;
+	cnf_out << "default_md = sha256" << endl;
 	cnf_out << endl;
 	cnf_out << "[dn]" << endl;
 	cnf_out << "CN=" << uuid << endl;
@@ -430,15 +416,38 @@ static std::tuple<string, string> _create_cert(const Options &options, const str
 		csr = _spawn("openssl req -new -config " + cnf + " -key " + pkey_file);
 		return std::make_tuple(pkey, csr);
 	} else {
+		// Initialize the HSM and create a key in it.
+		_setenv("OPENSSL_CONF", cnf.c_str());
+
+		/* Just in case we are using a TPM */
+		_setenv("TPM2_PKCS11_STORE", "/var/tpm2_pkcs11");
+
+		/* Remove the database, we dont care if it fails */
+		g_spawn_command_line_sync("rm /var/tpm2_pkcs11/tpm2_pkcs11.sqlite3",
+					  NULL, NULL, NULL, NULL);
+
+		/* Create the keys */
+		_pkcs11_tool(options.hsm_module,
+			     "--init-token --label " + hsm_token_label +
+			     " --so-pin " + options.hsm_so_pin);
+		_pkcs11_tool(options.hsm_module,
+			     "--init-pin --token-label " + hsm_token_label +
+			     " --so-pin " + options.hsm_so_pin +
+			     " --pin " + options.hsm_pin);
+		_pkcs11_tool(options.hsm_module,
+			     "--keypairgen --key-type EC:prime256v1"
+			     " --token-label " + hsm_token_label +
+			     " --id " + hsm_tls_key_id +
+			     " --label " + hsm_tls_key_label,
+			     options.hsm_pin);
+
+		/* Generate the certificate */
 		string key = "\"pkcs11:token=" + hsm_token_label +
 			";object=" + hsm_tls_key_label +
 			";type=private" +
 			";pin-value=" + options.hsm_pin + "\"";
-		// For some stupid reason, using OPENSSL_CONF in the
-		// environment works fine here, while using openssl
-		// req -new -config doesn't work with engines.
-		_setenv("OPENSSL_CONF", cnf.c_str());
-		csr = _spawn("openssl req -new -engine pkcs11 -keyform engine -key " + key);
+
+		csr = _spawn("openssl req -new -key " + key);
 		_unsetenv("OPENSSL_CONF");
 		return std::make_tuple(hsm_tls_key_id, csr);
 	}
