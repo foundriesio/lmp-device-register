@@ -46,19 +46,25 @@ message(STATUS "Setting SOTA_CLIENT to ${SOTA_CLIENT}")
 add_definitions('-g')
 add_definitions('-Wall')
 
-set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake-modules)
-
 # find all required libraries
 set(Boost_USE_STATIC_LIBS ON)
 find_package(Boost COMPONENTS filesystem iostreams program_options system REQUIRED)
 find_package(CURL REQUIRED)
 find_package(PkgConfig REQUIRED)
+find_package(OpenSSL 3.0.0 REQUIRED)
 pkg_search_module(GLIB REQUIRED glib-2.0)
 
 # Use C++11, but without GNU or other extensions
 set(CMAKE_CXX_STANDARD 11)
 
-add_executable(lmp-device-register src/main.cpp)
-target_include_directories(lmp-device-register PRIVATE ${GLIB_INCLUDE_DIRS})
-target_link_libraries(lmp-device-register ${CURL_LIBRARIES} ${Boost_LIBRARIES} ${GLIB_LDFLAGS})
+if(DISABLE_PKCS11)
+add_executable(lmp-device-register src/main.cpp src/options.cpp src/auth.cpp src/pkcs11_stub.cpp src/openssl.cpp)
+target_link_libraries(lmp-device-register ${CURL_LIBRARIES} ${Boost_LIBRARIES} ${GLIB_LDFLAGS} ${OPENSSL_LIBRARIES})
+else(DISABLE_PKCS11)
+pkg_check_modules(LIBP11 REQUIRED libp11)
+add_executable(lmp-device-register src/main.cpp src/options.cpp src/auth.cpp src/pkcs11.cpp src/openssl.cpp)
+target_link_libraries(lmp-device-register ${CURL_LIBRARIES} ${Boost_LIBRARIES} ${GLIB_LDFLAGS} ${OPENSSL_LIBRARIES} ${LIBP11_LIBRARIES})
+endif(DISABLE_PKCS11)
+
+target_include_directories(lmp-device-register PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc> ${GLIB_INCLUDE_DIRS})
 install(TARGETS lmp-device-register RUNTIME DESTINATION bin)
