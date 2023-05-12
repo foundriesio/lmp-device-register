@@ -31,6 +31,12 @@ ENDIF()
 ADD_DEFINITIONS(-DDEVICE_API="${DEVICE_API}")
 message(STATUS "Setting DEVICE_API to ${DEVICE_API}")
 
+IF (NOT OAUTH_API)
+    SET(OAUTH_API "https://app.foundries.io/oauth")
+ENDIF()
+ADD_DEFINITIONS(-DOAUTH_API="${OAUTH_API}")
+message(STATUS "Setting OAUTH_API to ${OAUTH_API}")
+
 IF (NOT DEFINED GIT_COMMIT)
     SET(GIT_COMMIT "unknown")
 ENDIF()

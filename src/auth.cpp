@@ -19,7 +19,7 @@ static string get_oauth_token(const string &factory, const string &device_uuid)
 	string url;
 	ptree json;
 
-	url = env == nullptr ? "https://app.foundries.io/oauth" : env;
+	url = env == nullptr ? OAUTH_API : env;
 
 	data = "client_id=" + device_uuid;
 	data += "&scope=" + factory + ":devices:create";
