@@ -157,10 +157,8 @@ static void get_device_info(const lmp_options &opt, string &csr, ptree &dev)
 	if (!opt.device_group.empty())
 		dev.put("group", opt.device_group);
 
-#ifdef AKLITE_TAGS
 	if (!opt.pacman_tags.empty())
 		dev.put("overrides.pacman.tags", "\"" + opt.pacman_tags + "\"");
-#endif
 }
 
 static void write_safely(const string &name, const string &content)
