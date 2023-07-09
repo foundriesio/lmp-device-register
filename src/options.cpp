@@ -257,6 +257,21 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 	if (opt.uuid.empty())
 		get_uuid(opt);
 
+	/* Validate the UUID early to avoid HTTP 400 */
+	std::regex UUID("^"
+		"[a-fA-F0-9]{8}-"
+		"[a-fA-F0-9]{4}-"
+		"[a-fA-F0-9]{4}-"
+		"[a-fA-F0-9]{4}-"
+		"[a-fA-F0-9]{12}"
+		"$");
+	std::smatch match;
+	std::regex_search(opt.uuid, match, UUID);
+	if (match.size() <= 0) {
+		cerr < "Invalid UUID: " << opt.uuid << endl;
+		return -1
+	}
+
 	/* Set the factory name from the UUID if not speficied */
 	if (opt.name.empty()) {
 		cout << "Setting factory name to UUID " << endl;
