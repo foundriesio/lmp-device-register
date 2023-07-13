@@ -269,7 +269,7 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 	std::regex_search(opt.uuid, match, UUID);
 	if (match.size() <= 0) {
 		cerr < "Invalid UUID: " << opt.uuid << endl;
-		return -1
+		return -1;
 	}
 
 	/* Set the factory name from the UUID if not speficied */
