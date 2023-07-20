@@ -80,14 +80,14 @@ namespace po = boost::program_options;
 "The PKCS#11 pin - HSM only."
 
 static void get_factory_tags_info(const string os_release, string &factory,
-				  string &tag)
+				  string &fsrc, string &tag, string &tsrc)
 {
 	const char *env = std::getenv(ENV_DEVICE_FACTORY);
 	ptree os_info;
 
 	if (env != nullptr) {
-		cout << "Factory read from environment" << endl;
 		factory = env;
+		fsrc = "environment";
 	}
 
 	if (!boost::filesystem::exists(os_release))
@@ -102,7 +102,7 @@ static void get_factory_tags_info(const string os_release, string &factory,
 	try {
 		tag = os_info.get<std::string>(OS_FACTORY_TAG);
 		boost::algorithm::erase_all(tag, "\"");
-		cout << "Tag read from " << os_release << endl;
+		tsrc = os_release;
 	} catch (boost::property_tree::ptree_bad_path const &) {
 		cout << "Can't read tag from " << os_release << endl;
 	}
@@ -113,7 +113,7 @@ static void get_factory_tags_info(const string os_release, string &factory,
 	try {
 		factory = os_info.get<std::string>(OS_FACTORY);
 		boost::algorithm::erase_all(factory, "\"");
-		cout << "Factory read from " << os_release << endl;
+		fsrc = os_release;
 	} catch (boost::property_tree::ptree_bad_path const &) {
 		cout << "Can't read factory from " << os_release << endl;
 	}
@@ -215,10 +215,12 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 {
 	po::options_description desc("lmp-device-register options");
 	string factory;
+	string fsrc;
 	string tags;
+	string tsrc;
 
 	/* Read from environment or configuration file */
-	get_factory_tags_info(LMP_OS_STR, factory, tags);
+	get_factory_tags_info(LMP_OS_STR, factory, fsrc, tags, tsrc);
 
 	set_default_options(opt, factory, tags, desc);
 
@@ -235,6 +237,16 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 		cerr << "Missing tag definition" << endl;
 		return -1;
 	}
+
+	if (factory.compare(opt.factory))
+		cout << "Factory read from command line " << endl;
+	else
+		cout << "Factory read from " << fsrc << endl;
+
+	if (tags.compare(opt.pacman_tags))
+		cout << "Tags read from command line " << endl;
+	else
+		cout << "Tags read from " << tsrc << endl;
 
 	if (!opt.hsm_module.empty())
 		if (opt.hsm_so_pin.empty() || opt.hsm_pin.empty()) {
