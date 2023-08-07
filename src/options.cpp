@@ -200,19 +200,53 @@ static int parse_command_line(int argc, char **argv,
 	return 0;
 }
 
-static void get_uuid(lmp_options &opt)
+static int validate_uuid(lmp_options &opt)
+{
+	std::regex UUID("^"
+		"[a-fA-F0-9]{8}-"
+		"[a-fA-F0-9]{4}-"
+		"[a-fA-F0-9]{4}-"
+		"[a-fA-F0-9]{4}-"
+		"[a-fA-F0-9]{12}"
+		"$");
+	std::smatch match;
+	std::regex_search(opt.uuid, match, UUID);
+
+	/* UUID is valid */
+	if (match.size() > 0)
+		return 0;
+
+	cerr << "Invalid UUID: " << opt.uuid;
+	if (opt.vuuid) {
+		cerr << ", aborting" << endl;
+		return -1;
+	}
+
+	/* Allow an invalid UUID when exception requested on the command line */
+	cerr << ", please consider using a valid format" << endl;
+	return 0;
+}
+
+static int get_uuid(lmp_options &opt)
 {
 	boost::uuids::uuid tmp;
+
+	/* UUID was passed on the command line */
+	if (!opt.uuid.empty())
+		return validate_uuid(opt);
 
 	/* Use PKCS#11 if the hsm_module was configured */
 	if (pkcs11_get_uuid(opt))
 		cerr << "WARN: can't get UUID from PKCS token" << endl;
 
+	/* Use the OS */
 	if (opt.uuid.empty()) {
 		tmp = boost::uuids::random_generator()();
 		opt.uuid = boost::uuids::to_string(tmp);
 		cout << "UUID: " << opt.uuid <<" [Random]" << endl;
 	}
+
+	return validate_uuid(opt);
 }
 
 int options_parse(int argc, char **argv, lmp_options &opt)
@@ -270,27 +304,8 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 			true : opt.production;
 
 	/* Set the UUID from OS-Release, HSM or RNG */
-	if (opt.uuid.empty())
-		get_uuid(opt);
-
-	/* Validate the UUID */
-	std::regex UUID("^"
-		"[a-fA-F0-9]{8}-"
-		"[a-fA-F0-9]{4}-"
-		"[a-fA-F0-9]{4}-"
-		"[a-fA-F0-9]{4}-"
-		"[a-fA-F0-9]{12}"
-		"$");
-	std::smatch match;
-	std::regex_search(opt.uuid, match, UUID);
-	if (match.size() <= 0) {
-		cerr << "Invalid UUID: " << opt.uuid;
-		if (opt.vuuid) {
-			cerr << ", aborting" << endl;
-			return -1;
-		}
-		cerr << ", please consider using a valid format" << endl;
-	}
+	if (get_uuid(opt))
+		return -1;
 
 	/* Set the factory name from the UUID if not speficied */
 	if (opt.name.empty()) {
