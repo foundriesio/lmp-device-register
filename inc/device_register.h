@@ -91,6 +91,7 @@ struct lmp_options {
 	bool use_server;
 	bool production;
 	bool mlock;
+	bool vuuid;
 #if defined DOCKER_COMPOSE_APP
 	string apps;
 	string restorable_apps;

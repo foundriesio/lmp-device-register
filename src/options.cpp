@@ -33,6 +33,9 @@ namespace po = boost::program_options;
 "associated with the device, e.g. as the CommonName field in certificates "    \
 "related to it."
 
+#define VUUID_HELP \
+"Validate the UUID before calling the remote service."
+
 #define OSTREE_SRV_HELP \
 "Use OSTree Proxy server instead of the Device Gateway to pull the ostree repo."
 
@@ -138,6 +141,7 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 	OPT_DEF_STR("factory,f", opt.factory, factory, FACTORY_HELP)
 	OPT_STR("hsm-so-pin,S", opt.hsm_so_pin, HSM_SO_PIN_HELP)
 	OPT_DEF_BOOL("mlock-all,l", opt.mlock, true, MLOCK_HELP)
+	OPT_DEF_BOOL("validate-uuid,v", opt.vuuid, true, VUUID_HELP)
 	OPT_DEF_STR("hwid,i", opt.hwid, HARDWARE_ID, HWID_HELP)
 	OPT_DEF_STR("tags,t", opt.pacman_tags, tags, TAGS_HELP)
 	OPT_STR("api-token,T", opt.api_token, API_TOKEN_HELP)
@@ -269,7 +273,7 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 	if (opt.uuid.empty())
 		get_uuid(opt);
 
-	/* Validate the UUID early to avoid HTTP 400 */
+	/* Validate the UUID */
 	std::regex UUID("^"
 		"[a-fA-F0-9]{8}-"
 		"[a-fA-F0-9]{4}-"
@@ -280,8 +284,12 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 	std::smatch match;
 	std::regex_search(opt.uuid, match, UUID);
 	if (match.size() <= 0) {
-		cerr << "Invalid UUID: " << opt.uuid << endl;
-		return -1;
+		cerr << "Invalid UUID: " << opt.uuid;
+		if (opt.vuuid) {
+			cerr << ", aborting" << endl;
+			return -1;
+		}
+		cerr << ", please consider using a valid format" << endl;
 	}
 
 	/* Set the factory name from the UUID if not speficied */
