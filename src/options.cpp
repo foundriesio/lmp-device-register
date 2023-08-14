@@ -266,7 +266,7 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 	if (parse_command_line(argc, argv, desc))
 		return -1;
 
-	if (opt.factory.empty()) {
+	if (opt.factory.empty() || opt.factory == "lmp") {
 		cerr << "Missing factory definition" << endl;
 		return -1;
 	}
