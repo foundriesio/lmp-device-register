@@ -307,9 +307,9 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 	if (get_uuid(opt))
 		return -1;
 
-	/* Set the factory name from the UUID if not speficied */
+	/* Set the device name from the UUID if not specified */
 	if (opt.name.empty()) {
-		cout << "Setting factory name to UUID " << endl;
+		cout << "Setting device name to UUID " << endl;
 		opt.name = opt.uuid;
 	}
 
