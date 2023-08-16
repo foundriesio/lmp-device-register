@@ -227,6 +227,26 @@ static int validate_uuid(lmp_options &opt)
 	return 0;
 }
 
+static int validate_hsm(lmp_options &opt)
+{
+	if (opt.hsm_module.empty()) {
+		if (!opt.hsm_so_pin.empty() || !opt.hsm_pin.empty()) {
+			cerr <<  "HSM incorrectly configured" << endl;
+			return -1;
+		}
+		return 0;
+	}
+
+	/* Check that pins exist and that the HSM can be accessed */
+	if (opt.hsm_so_pin.empty() || opt.hsm_pin.empty()
+	    || pkcs11_check_hsm(opt)) {
+		cerr << "HSM incorrectly configured" << endl;
+		return -1;
+	}
+
+	return 0;
+}
+
 static int get_uuid(lmp_options &opt)
 {
 	boost::uuids::uuid tmp;
@@ -286,18 +306,8 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 	else
 		cout << "Tags read from " << tsrc << endl;
 
-	if (!opt.hsm_module.empty())
-		if (opt.hsm_so_pin.empty() || opt.hsm_pin.empty()) {
-			cerr << "HSM incorrectly configured" << endl;
-			return -1;
-		}
-
-	if (opt.hsm_module.empty())
-		if (!opt.hsm_so_pin.empty() ||
-		    !opt.hsm_pin.empty()) {
-			cerr <<  "HSM incorrectly configured" << endl;
-			return -1;
-		}
+	if (validate_hsm(opt))
+		return -1;
 
 	/* Production env ENABLED takes precedence over config disabled */
 	opt.production = std::getenv(ENV_PRODUCTION) != nullptr ?
