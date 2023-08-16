@@ -113,4 +113,5 @@ int openssl_gen_csr(const lmp_options &options, EVP_PKEY *pub, EVP_PKEY *priv,
 int pkcs11_create_csr(const lmp_options &options, string &key, string &csr);
 int pkcs11_store_cert(lmp_options &opt, X509 *cert);
 int pkcs11_get_uuid(lmp_options &options);
+int pkcs11_check_hsm(lmp_options &opt);
 #endif

@@ -289,3 +289,18 @@ int pkcs11_store_cert(lmp_options &opt, X509 *cert)
 
 	return 0;
 }
+
+int pkcs11_check_hsm(lmp_options &opt)
+{
+	PKCS11_CTX *ctx = NULL;
+
+	ctx = PKCS11_CTX_new();
+
+	if (PKCS11_CTX_load(ctx, opt.hsm_module.c_str()))
+		leave;
+
+	PKCS11_CTX_unload(ctx);
+	PKCS11_CTX_free(ctx);
+
+	return 0;
+}
