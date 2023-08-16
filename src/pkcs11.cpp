@@ -29,48 +29,55 @@ static const struct lmp_hsm {
 	.crt_id = HSM_CRT_ID,
 };
 
+/* Error on this function is not critical hence do house-keeping on failures */
 int pkcs11_get_uuid(lmp_options &opt)
 {
 	PKCS11_SLOT *slots{nullptr};
 	PKCS11_CTX *ctx{nullptr};
 	unsigned int nslots = 0;
+	int ret = 0;
 
 	if (opt.hsm_module.empty())
 		return 0;
 
 	ctx = PKCS11_CTX_new();
 	if (!ctx)
-		leave;
+		return -1;
 
-	if (PKCS11_CTX_load(ctx, opt.hsm_module.c_str()))
-		leave;
-
-	if (PKCS11_enumerate_slots(ctx, &slots, &nslots))
-		leave;
-
-	/* UUID format is a requirement for HSM modules (mainly OP-TEE) */
-	std::regex UUID("("
-			"[a-f0-9]{8}-"
-			"[a-f0-9]{4}-"
-			"[a-f0-9]{4}-"
-			"[a-f0-9]{4}-"
-			"[a-f0-9]{12}"
-			")");
-	std::smatch match;
-
-	for (size_t i = 0; i < nslots && opt.uuid.empty(); i++) {
-		string slot_info = string(slots[i].description);
-
-		std::regex_search(slot_info, match, UUID);
-		if (match.size() > 0)
-			opt.uuid = match.str(1);
+	if (PKCS11_CTX_load(ctx, opt.hsm_module.c_str())) {
+		PKCS11_CTX_free(ctx);
+		return -1;
 	}
 
-	PKCS11_release_all_slots(ctx, slots, nslots);
+	if (!PKCS11_enumerate_slots(ctx, &slots, &nslots)) {
+		/* UUID format is a requirement for HSM modules */
+		std::regex UUID("("
+				"[a-f0-9]{8}-"
+				"[a-f0-9]{4}-"
+				"[a-f0-9]{4}-"
+				"[a-f0-9]{4}-"
+				"[a-f0-9]{12}"
+				")");
+		std::smatch match;
+
+		for (size_t i = 0; i < nslots && opt.uuid.empty(); i++) {
+			string slot_info = string(slots[i].description);
+
+			std::regex_search(slot_info, match, UUID);
+			if (match.size() > 0)
+				opt.uuid = match.str(1);
+		}
+
+		PKCS11_release_all_slots(ctx, slots, nslots);
+	} else {
+		/* Can't enumerate the slots */
+		ret = -1;
+	}
+
 	PKCS11_CTX_unload(ctx);
 	PKCS11_CTX_free(ctx);
 
-	return 0;
+	return ret;
 }
 
 /* Initialize HSM_TOKEN_STR (aktualizr token) */
