@@ -20,12 +20,16 @@
 #include <unistd.h>
 
 #include <openssl/pem.h>
+#include <openssl/core_names.h>
+#include <openssl/params.h>
 #include <openssl/evp.h>
 #include <openssl/encoder.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 #include <openssl/err.h>
 #include <openssl/buffer.h>
+#include <openssl/buffer.h>
+#include <openssl/param_build.h>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/beast/core/detail/base64.hpp>
@@ -87,8 +91,10 @@ struct lmp_options {
 	string hsm_pin;
 	string sota_dir;
 	string pacman_tags;
+	string mprotect_key;
 	bool start_daemon;
 	bool use_server;
+	bool mprotect;
 	bool production;
 	bool mlock;
 	bool vuuid;
@@ -109,9 +115,13 @@ int options_parse(int argc, char **argv, lmp_options &options);
 int openssl_create_csr(const lmp_options &options, string &key, string &csr);
 int openssl_gen_csr(const lmp_options &options, EVP_PKEY *pub, EVP_PKEY *priv,
 		    string &csr);
+int openssl_ec_raw_to_pem(string &raw, string &pem);
 
 int pkcs11_create_csr(const lmp_options &options, string &key, string &csr);
 int pkcs11_store_cert(lmp_options &opt, X509 *cert);
 int pkcs11_get_uuid(lmp_options &options);
 int pkcs11_check_hsm(lmp_options &opt);
+
+int tee_imx_get_mprotect_pubkey(lmp_options &opt);
+
 #endif

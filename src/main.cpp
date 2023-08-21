@@ -214,6 +214,13 @@ static int populate_sota_dir(lmp_options &opt, ptree &resp, string &pkey)
 		out.close();
 	}
 
+	if (!opt.mprotect_key.empty()) {
+		/* Write the MProtect public key */
+		std::ofstream out(opt.sota_dir + "/mprotect_key.pem");
+		out << opt.mprotect_key;
+		out.close();
+	}
+
 	stringstream sota_toml;
 	for (auto it: resp) {
 		string name = opt.sota_dir + "/" + it.first;

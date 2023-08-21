@@ -63,14 +63,29 @@ pkg_search_module(GLIB REQUIRED glib-2.0)
 # Use C++11, but without GNU or other extensions
 set(CMAKE_CXX_STANDARD 11)
 
+set(LMP_SRCS src/main.cpp src/options.cpp src/auth.cpp src/openssl.cpp)
+set(LMP_LIBS ${CURL_LIBRARIES} ${Boost_LIBRARIES} ${GLIB_LDFLAGS} ${OPENSSL_LIBRARIES})
+set(LMP_INCS PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc> ${GLIB_INCLUDE_DIRS})
+
+# PKCS11 configuration
 if(DISABLE_PKCS11)
-add_executable(lmp-device-register src/main.cpp src/options.cpp src/auth.cpp src/pkcs11_stub.cpp src/openssl.cpp)
-target_link_libraries(lmp-device-register ${CURL_LIBRARIES} ${Boost_LIBRARIES} ${GLIB_LDFLAGS} ${OPENSSL_LIBRARIES})
+set(LMP_SRCS ${LMP_SRCS} src/pkcs11_stub.cpp)
 else(DISABLE_PKCS11)
 pkg_check_modules(LIBP11 REQUIRED libp11)
-add_executable(lmp-device-register src/main.cpp src/options.cpp src/auth.cpp src/pkcs11.cpp src/openssl.cpp)
-target_link_libraries(lmp-device-register ${CURL_LIBRARIES} ${Boost_LIBRARIES} ${GLIB_LDFLAGS} ${OPENSSL_LIBRARIES} ${LIBP11_LIBRARIES})
+set(LMP_SRCS ${LMP_SRCS} src/pkcs11.cpp)
+set(LMP_LIBS ${LMP_LIBS} ${LIBP11_LIBRARIES})
 endif(DISABLE_PKCS11)
 
-target_include_directories(lmp-device-register PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc> ${GLIB_INCLUDE_DIRS})
+# OPTEE_CLIENT configuration
+if(ENABLE_TEE)
+set(LMP_SRCS ${LMP_SRCS} src/tee.cpp)
+set(LMP_LIBS ${LMP_LIBS} ptateec)
+set(LMP_INCS ${LMP_INCS} ${OPTEE_TEST_SDK}/host_include)
+else(ENABLE_TEE)
+set(LMP_SRCS ${LMP_SRCS} src/tee_stub.cpp)
+endif(ENABLE_TEE)
+
+add_executable(lmp-device-register ${LMP_SRCS})
+target_link_libraries(lmp-device-register ${LMP_LIBS})
+target_include_directories(lmp-device-register ${LMP_INCS} )
 install(TARGETS lmp-device-register RUNTIME DESTINATION bin)

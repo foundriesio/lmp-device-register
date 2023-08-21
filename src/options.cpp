@@ -52,6 +52,10 @@ namespace po = boost::program_options;
 #define TAGS_HELP \
 "Configure " SOTA_CLIENT " to only apply updates from Targets with these tags."
 
+#define MP_HELP \
+"Enable iMX Manufacturing Protection feature: a board specific ECDSA public"   \
+"key will be obtained from the SoC and handled to the server."
+
 #define DAEMON_HELP \
 "Start the " SOTA_CLIENT " systemd service after registration."
 
@@ -134,6 +138,7 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 
 	("help", "print usage")
 	OPT_DEF_BOOL("use-ostree-server", opt.use_server, true, OSTREE_SRV_HELP)
+	OPT_DEF_BOOL("manufacturing-protection,w", opt.mprotect, false, MP_HELP)
 	OPT_DEF_BOOL("production,p", opt.production, prod, PRODUCTION_HELP)
 	OPT_DEF_BOOL("start-daemon", opt.start_daemon,true, DAEMON_HELP)
 	OPT_DEF_STR("sota-dir,d", opt.sota_dir, SOTA_DIR, SOTA_DIR_HELP)
@@ -321,6 +326,13 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 	if (opt.name.empty()) {
 		cout << "Setting device name to UUID " << endl;
 		opt.name = opt.uuid;
+	}
+
+	if (opt.mprotect) {
+		if (tee_imx_get_mprotect_pubkey(opt)) {
+			cerr << "Error reading the MProtection key" << endl;
+			return -1;
+		}
 	}
 
 	if (opt.mlock) {
