@@ -5,6 +5,7 @@
  */
 
 #include <device_register.h>
+#include <errno.h>
 
 namespace po = boost::program_options;
 namespace io = boost::iostreams;
@@ -47,6 +48,40 @@ static bool ends_with(const std::string &s, const std::string &suffix)
 	return ssz >= sufsz && !s.compare(ssz - sufsz, sufsz, suffix);
 }
 
+
+static int check_reg_files(lmp_options &opt, std::string &sql, std::string &crt)
+{
+	if (access(sql.c_str(), F_OK) && access(crt.c_str(), F_OK))
+		return 0;
+
+	if (!opt.force) {
+		cerr << "ERROR: Device already registered in "
+		     << opt.sota_dir << endl;
+		cerr << "Re-run with --force 1 to remove existing registration "
+		     << "data" << endl;
+		return -1;
+	}
+
+	if (!access(sql.c_str(), F_OK)) {
+		cout << "Removing " << sql << endl;
+		if (unlink(sql.c_str())) {
+			cerr << "ERROR: unable to remove " << sql << ": "
+			     << strerror(errno) << endl;
+			return -1;
+		}
+	}
+
+	if (!access(crt.c_str(), F_OK)) {
+		cout << "Removing " << crt << endl;
+		if (unlink(crt.c_str())) {
+			cerr << "ERROR: unable to remove " << crt << ": "
+			     << strerror(errno) << endl;
+			return -1;
+		}
+	}
+	return 0;
+}
+
 static int check_device_status(lmp_options &opt)
 {
 	string crt = opt.sota_dir + SOTA_PEM;
@@ -66,11 +101,8 @@ static int check_device_status(lmp_options &opt)
 	unlink(tmp.c_str());
 
 	/* Check device was not been registered */
-	if (!access(sql.c_str(), F_OK) && !access(crt.c_str(), F_OK)) {
-		cerr << "ERROR: Device already registered in "
-		     << opt.sota_dir << endl;
+	if (check_reg_files(opt, sql, crt))
 		return -1;
-	}
 
 	/* Check aklite not running */
 	if (!boost::filesystem::exists(aklock))

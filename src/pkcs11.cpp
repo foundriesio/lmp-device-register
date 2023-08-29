@@ -139,6 +139,100 @@ static int pkcs11_initialize(const lmp_options &opt)
 	return 0;
 }
 
+/* Verify if the HSM has any public or private keys with the given label */
+static bool key_exists(PKCS11_TOKEN *token, string label)
+{
+	PKCS11_KEY *key = NULL;
+	unsigned int n = 0;
+
+	if (PKCS11_enumerate_public_keys(token, &key, &n) || !n)
+		return false;
+
+	for ( ; key && n; key++, n--) {
+		if (key->label == label)
+			return true;
+	}
+
+	if (PKCS11_enumerate_keys(token, &key, &n) || !n)
+		return false;
+
+	for ( ; key && n; key++, n--) {
+		if (key->label == label)
+			return true;
+	}
+
+	return false;
+}
+
+/* Remove keys matching a label */
+static int remove_keys(PKCS11_TOKEN *token, string label)
+{
+	PKCS11_KEY *key = NULL;
+	unsigned int n = 0;
+
+	if (PKCS11_enumerate_public_keys(token, &key, &n) || !n)
+		return 0;
+
+	for ( ; key && n; key++, n--) {
+		if (key->label == label) {
+			cout << "PKCS11: Removing private key with \""
+			     << label << "\" label" << endl;
+			if (PKCS11_remove_key(key))
+				leave;
+		}
+	}
+
+	if (PKCS11_enumerate_keys(token, &key, &n) || !n)
+		return 0;
+
+	for ( ; key && n; key++, n--) {
+		if (key->label == label) {
+			cout << "PKCS11: Removing public key with \""
+			     << label << "\" label" << endl;
+			if (PKCS11_remove_key(key))
+				leave;
+		}
+	}
+	return 0;
+}
+
+/* Verify if the HSM has any certificate with the given label */
+static bool cert_exists(PKCS11_TOKEN *token, string label)
+{
+	PKCS11_CERT *cert = NULL;
+	unsigned int n = 0;
+
+	if (PKCS11_enumerate_certs(token, &cert, &n) || !n)
+		return false;
+
+	for ( ; cert && n; cert++, n--)
+		if (cert->label == label)
+			return true;
+
+	return false;
+}
+
+/* Remove certificates matching a label */
+static int remove_certs(PKCS11_TOKEN *token, string label)
+{
+	PKCS11_CERT *cert = NULL;
+	unsigned int n = 0;
+
+	if (PKCS11_enumerate_certs(token, &cert, &n) || !n)
+		return 0;
+
+	for ( ; cert && n; cert++, n--) {
+		if (cert->label != label)
+			continue;
+		cout << "PKCS11: Removing certificate with \"" << label
+		     << "\" label" << endl;
+		if (PKCS11_remove_certificate(cert))
+			leave;
+	}
+
+	return 0;
+}
+
 /* Create an EC keypair in the HSM (not TPM) and generate a CSR */
 int pkcs11_create_csr(const lmp_options &opt, string &pkey, string &csr)
 {
@@ -297,17 +391,79 @@ int pkcs11_store_cert(lmp_options &opt, X509 *cert)
 	return 0;
 }
 
+static int check_hsm_objects(lmp_options &opt, PKCS11_SLOT *slot)
+{
+	int ret = 0;
+
+	if (PKCS11_open_session(slot, 1))
+		leave;
+
+	if (PKCS11_login(slot, 0, opt.hsm_pin.c_str()))
+		leave;
+
+	if (key_exists(slot->token, hsm_cfg.tls_lbl)) {
+		if (opt.force) {
+			if (remove_keys(slot->token, hsm_cfg.tls_lbl))
+				ret = -1;
+		} else {
+			cerr << "Found key with conflicting \""
+			     << hsm_cfg.tls_lbl << "\" label" << endl;
+			ret = -1;
+		}
+	}
+
+	if (cert_exists(slot->token, hsm_cfg.crt_lbl)) {
+		if (opt.force) {
+			if (remove_certs(slot->token, hsm_cfg.crt_lbl))
+				ret = -1;
+		} else {
+			cerr << "Found certificate with conflicting \""
+			     << hsm_cfg.crt_lbl << "\" label" << endl;
+			ret = -1;
+		}
+	}
+
+	if (ret && !opt.force) {
+		cerr << "Re-run with --force 1 to cleanup conflicting "
+			"keys and certificates" << endl;
+	}
+
+	if (PKCS11_logout(slot))
+		leave;
+
+	return ret;
+}
+
 int pkcs11_check_hsm(lmp_options &opt)
 {
+	PKCS11_SLOT *slots = NULL;
+	PKCS11_SLOT *slot = NULL;
 	PKCS11_CTX *ctx = NULL;
+	unsigned int nslots = 0;
+	int ret = 0;
 
 	ctx = PKCS11_CTX_new();
 
 	if (PKCS11_CTX_load(ctx, opt.hsm_module.c_str()))
 		leave;
 
+	if (PKCS11_enumerate_slots(ctx, &slots, &nslots))
+		leave;
+
+	slot = PKCS11_find_token(ctx, slots, nslots);
+
+	while (slot && slot->token->label != hsm_cfg.token)
+		slot = PKCS11_find_next_token(ctx, slots, nslots, slot);
+
+	/* Only verify objects if token was found */
+	if (slot && slot->token->label == hsm_cfg.token)
+		ret = check_hsm_objects(opt, slot);
+
+	/* Release context */
+	PKCS11_release_all_slots(ctx, slots, nslots);
+
 	PKCS11_CTX_unload(ctx);
 	PKCS11_CTX_free(ctx);
 
-	return 0;
+	return ret;
 }
