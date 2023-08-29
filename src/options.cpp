@@ -82,6 +82,9 @@ namespace po = boost::program_options;
 #define HSM_PIN_HELP \
 "The PKCS#11 pin - HSM only."
 
+#define FORCE_HELP \
+"Force registration, removing data from previous execution."
+
 static void get_factory_tags_info(const string os_release, string &factory,
 				  string &fsrc, string &tag, string &tsrc)
 {
@@ -151,6 +154,7 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 	OPT_STR("name,n", opt.name, NAME_HELP)
 	OPT_DEF_STR("api-token-header,H",
 		    opt.api_token_header, "OSF-TOKEN",API_TOKEN_HDR_HELP)
+	OPT_DEF_BOOL("force", opt.force, false, FORCE_HELP)
 
 #if defined DOCKER_COMPOSE_APP
 	OPT_STR("apps,a", opt.apps, APPS_HELP)
