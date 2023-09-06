@@ -467,3 +467,50 @@ int pkcs11_check_hsm(lmp_options &opt)
 
 	return ret;
 }
+
+int pkcs11_remove_keys(lmp_options &opt)
+{
+	PKCS11_SLOT *slots = NULL;
+	PKCS11_SLOT *slot = NULL;
+	PKCS11_CTX *ctx = NULL;
+	unsigned int nslots = 0;
+
+	if (opt.hsm_module.empty())
+		leave;
+
+	cout << "PKCS11: Cleaning up created keys" << endl;
+	ctx = PKCS11_CTX_new();
+
+	if (PKCS11_CTX_load(ctx, opt.hsm_module.c_str()))
+		leave;
+
+	if (PKCS11_enumerate_slots(ctx, &slots, &nslots))
+		leave;
+
+	slot = PKCS11_find_token(ctx, slots, nslots);
+
+	while (slot && slot->token->label != hsm_cfg.token)
+		slot = PKCS11_find_next_token(ctx, slots, nslots, slot);
+
+	/* The  HSM_TOKEN_STR was not found, no need to proceed */
+	if (!slot || slot->token->label != hsm_cfg.token)
+		return 0;
+
+	if (PKCS11_open_session(slot, 1))
+		leave;
+
+	if (PKCS11_login(slot, 0, opt.hsm_pin.c_str()))
+		leave;
+
+	remove_keys(slot->token, hsm_cfg.tls_lbl);
+
+	if (PKCS11_logout(slot))
+		leave;
+
+	/* Release context */
+	PKCS11_release_all_slots(ctx, slots, nslots);
+	PKCS11_CTX_unload(ctx);
+	PKCS11_CTX_free(ctx);
+
+	return 0;
+}
