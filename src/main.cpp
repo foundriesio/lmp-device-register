@@ -333,8 +333,12 @@ int main(int argc, char **argv)
 	cout << "Registering device " << opt.name <<
 		" with factory " << opt.factory << endl;
 
-	if (auth_register_device(headers, info, resp))
+	if (auth_register_device(headers, info, resp)) {
+		/* Remove key pair created while */
+		if (!opt.hsm_module.empty())
+			pkcs11_remove_keys(opt);
 		exit(EXIT_FAILURE);
+	}
 
 	/* Store the login details */
 	if (populate_sota_dir(opt, resp, key))
