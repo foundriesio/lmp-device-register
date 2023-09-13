@@ -37,7 +37,7 @@ int pkcs11_check_hsm(lmp_options &opt)
 	return -1;
 }
 
-int pkcs11_remove_keys(lmp_options &opt)
+int pkcs11_cleanup(lmp_options &opt)
 {
 	cout << "Executing PKCS11 stub " << endl;
 

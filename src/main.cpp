@@ -6,11 +6,14 @@
 
 #include <device_register.h>
 #include <errno.h>
+#include <signal.h>
 
 namespace po = boost::program_options;
 namespace io = boost::iostreams;
 
-static string spawn(const string &cmd)
+static lmp_options opt;
+
+static void spawn(const string &cmd)
 {
 	g_autofree gchar *out{nullptr};
 	g_autofree gchar *err{nullptr};
@@ -20,24 +23,19 @@ static string spawn(const string &cmd)
 	if (!g_spawn_command_line_sync(cmd.c_str(), &out, &err, &status, &e)) {
 		cerr << "Unable to run: " << cmd << endl;
 		cerr << "Error is: " << e->message << endl;
-
-		exit(EXIT_FAILURE);
+		return;
 	}
 
 	if (status != 0) {
 		cerr << "Unable to run: " << cmd << endl;
 		cerr << "STDERR is: " << err << endl;
-
-		exit(EXIT_FAILURE);
+		return;
 	}
 
 	if (e != nullptr) {
 		cerr << "Unable to run: " << cmd << endl;
-
-		exit(EXIT_FAILURE);
+		return;
 	}
-
-	return out;
 }
 
 static bool ends_with(const std::string &s, const std::string &suffix)
@@ -48,9 +46,41 @@ static bool ends_with(const std::string &s, const std::string &suffix)
 	return ssz >= sufsz && !s.compare(ssz - sufsz, sufsz, suffix);
 }
 
-
-static int check_reg_files(lmp_options &opt, std::string &sql, std::string &crt)
+static int sota_cleanup(lmp_options &opt)
 {
+	string crt = opt.sota_dir + SOTA_PEM;
+	string sql = opt.sota_dir + SOTA_SQL;
+
+	cout << "Cleaning up SOTA files" << endl;
+
+	if (!access(sql.c_str(), F_OK)) {
+		cout << "Removing " << sql << endl;
+
+		if (unlink(sql.c_str())) {
+			cerr << "ERROR: unable to remove " << sql << ": "
+			     << strerror(errno) << endl;
+			return -1;
+		}
+	}
+
+	if (!access(crt.c_str(), F_OK)) {
+		cout << "Removing " << crt << endl;
+
+		if (unlink(crt.c_str())) {
+			cerr << "ERROR: unable to remove " << crt << ": "
+			     << strerror(errno) << endl;
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+static int check_sota_files(lmp_options &opt)
+{
+	string crt = opt.sota_dir + SOTA_PEM;
+	string sql = opt.sota_dir + SOTA_SQL;
+
 	if (access(sql.c_str(), F_OK) && access(crt.c_str(), F_OK))
 		return 0;
 
@@ -62,49 +92,13 @@ static int check_reg_files(lmp_options &opt, std::string &sql, std::string &crt)
 		return -1;
 	}
 
-	if (!access(sql.c_str(), F_OK)) {
-		cout << "Removing " << sql << endl;
-		if (unlink(sql.c_str())) {
-			cerr << "ERROR: unable to remove " << sql << ": "
-			     << strerror(errno) << endl;
-			return -1;
-		}
-	}
-
-	if (!access(crt.c_str(), F_OK)) {
-		cout << "Removing " << crt << endl;
-		if (unlink(crt.c_str())) {
-			cerr << "ERROR: unable to remove " << crt << ": "
-			     << strerror(errno) << endl;
-			return -1;
-		}
-	}
-	return 0;
+	return sota_cleanup(opt);
 }
 
-static int check_device_status(lmp_options &opt)
+static int check_aklite_not_running()
 {
-	string crt = opt.sota_dir + SOTA_PEM;
-	string sql = opt.sota_dir + SOTA_SQL;
-	string tmp = opt.sota_dir + "/.tmp";
 	const char *const aklock{AKLITE_LOCK};
 
-	/* Check directory is writable */
-	int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC,
-		      S_IRUSR | S_IWUSR);
-	if (fd < 0) {
-		cerr << "Unable to write to " << opt.sota_dir << endl;
-		return -1;
-	}
-
-	close(fd);
-	unlink(tmp.c_str());
-
-	/* Check device was not been registered */
-	if (check_reg_files(opt, sql, crt))
-		return -1;
-
-	/* Check aklite not running */
 	if (!boost::filesystem::exists(aklock))
 		return 0;
 
@@ -119,6 +113,30 @@ static int check_device_status(lmp_options &opt)
 		cerr << "ERROR: is " SOTA_CLIENT " running ?" << endl;
 		return -1;
 	}
+}
+
+static int check_device_status(lmp_options &opt)
+{
+	string tmp = opt.sota_dir + "/.tmp";
+
+	/* Check directory is writable */
+	int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC,
+		      S_IRUSR | S_IWUSR);
+	if (fd < 0) {
+		cerr << "Unable to write to " << opt.sota_dir << endl;
+		return -1;
+	}
+
+	close(fd);
+	unlink(tmp.c_str());
+
+	/* Aklite must not be running */
+	if (check_aklite_not_running())
+		return -1;
+
+	/* Check device was not been registered */
+	if (check_sota_files(opt))
+		return -1;
 
 	return 0;
 }
@@ -193,7 +211,7 @@ static void get_device_info(const lmp_options &opt, string &csr, ptree &dev)
 		dev.put("overrides.pacman.tags", "\"" + opt.pacman_tags + "\"");
 }
 
-static void write_safely(const string &name, const string &content)
+static int write_safely(const string &name, const string &content)
 {
 	auto tmp = name + ".tmp";
 
@@ -205,19 +223,21 @@ static void write_safely(const string &name, const string &content)
 		if (rc != 0) {
 			cerr << "Unable to write to " << tmp <<
 				": " << strerror(errno) << endl;
-			exit(EXIT_FAILURE);
+			return -1;
 		}
 	} catch (const std::exception &e) {
 		cerr << "Unable to open " << tmp <<
 			" for writing: " << e.what() << endl;
-		exit(EXIT_FAILURE);
+		return -1;
 	}
 	int rc = rename(tmp.c_str(), name.c_str());
 	if (rc != 0) {
 		cerr << "Unable to create " << name <<
 			": " << strerror(errno) << endl;
-		exit(EXIT_FAILURE);
+		return -1;
 	}
+
+	return 0;
 }
 
 /*
@@ -255,37 +275,45 @@ static int populate_sota_dir(lmp_options &opt, ptree &resp, string &pkey)
 
 			if (!opt.hsm_module.empty())
 				fill_p11_engine_info(opt, sota_toml);
-		} else {
-			write_safely(name, it.second.data());
 
-			if (!ends_with(name, ".pem"))
-				continue;
+			continue;
+		}
 
-			/* Import the certificate also to PKCS#11 database */
-			if (!opt.hsm_module.empty()) {
-				/* Read back the file into X509 */
-				FILE *file = NULL;
-				X509 *crt = NULL;
+		if (write_safely(name, it.second.data()))
+			goto error;
 
-				file = fopen(name.c_str(), "rb");
-				if (!file)
-					return -1;
+		if (!ends_with(name, ".pem"))
+			continue;
 
-				crt = PEM_read_X509(file, NULL, 0, NULL);
-				if (!crt)
-					return -1;
+		/* Import the certificate also to PKCS#11 database */
+		if (!opt.hsm_module.empty()) {
+			/* Read back the file into X509 */
+			FILE *file = NULL;
+			X509 *crt = NULL;
 
-				fclose(file);
+			file = fopen(name.c_str(), "rb");
+			if (!file)
+				goto error;
 
-				if (pkcs11_store_cert(opt, crt))
-					return -1;
-			}
+			crt = PEM_read_X509(file, NULL, 0, NULL);
+			if (!crt)
+				goto error;
+
+			fclose(file);
+
+			if (pkcs11_store_cert(opt, crt))
+				goto error;
 		}
 	}
 
-	write_safely(opt.sota_dir + "/sota.toml", sota_toml.str());
+	if (write_safely(opt.sota_dir + "/sota.toml", sota_toml.str()))
+		goto error;
 
 	return 0;
+error:
+	sota_cleanup(opt);
+
+	return -1;
 }
 
 /*
@@ -299,32 +327,61 @@ int create_csr(const lmp_options &opt, string &key, string &csr)
 	return pkcs11_create_csr(opt, key, csr);
 }
 
+static void cleanup(void)
+{
+	cout << "Cleaning up partial registration before leaving" << endl;
+	sota_cleanup(opt);
+	pkcs11_cleanup(opt);
+}
+
+static void sig_handler(int signum)
+{
+	cout << endl << "Handling " << strsignal(signum) << " signal" << endl;
+
+	/* Re-register default signal handler */
+	signal(signum, SIG_DFL);
+
+	cleanup();
+
+	/* Call default signal handler */
+	raise(signum);
+}
+
+static void set_signals(sighandler_t handler)
+{
+	signal(SIGINT, sig_handler);
+	signal(SIGSEGV, sig_handler);
+}
+
 int main(int argc, char **argv)
 {
 	http_headers headers{{ "Content-type", "application/json" }};
-	lmp_options opt;
 	ptree info;
 	ptree resp;
 	string key;
 	string csr;
 
 	if (options_parse(argc, argv, opt))
-		exit(EXIT_FAILURE);
+		return -1;
 
 	/* Check if this device can be registered */
 	if (check_device_status(opt))
-		exit(EXIT_FAILURE);
+		return -1;
 
 	/* Get the HTTP headers */
-	auth_get_http_headers(opt, headers);
+	if (auth_get_http_headers(opt, headers))
+		return -1;
 
 	/* Check that the registration server and endpoint are reachable */
 	if (auth_ping_server())
-		exit(EXIT_FAILURE);
+		return -1;
+
+	/* Register signal handler for cleaning up */
+	set_signals(sig_handler);
 
 	/* Create the key pair and the certificate request */
 	if (create_csr(opt, key, csr))
-		exit(EXIT_FAILURE);
+		goto error;
 
 	/* Get the device information */
 	get_device_info(opt, csr, info);
@@ -333,23 +390,26 @@ int main(int argc, char **argv)
 	cout << "Registering device " << opt.name <<
 		" with factory " << opt.factory << endl;
 
-	if (auth_register_device(headers, info, resp)) {
-		/* Remove key pair created while */
-		if (!opt.hsm_module.empty())
-			pkcs11_remove_keys(opt);
-		exit(EXIT_FAILURE);
-	}
+	if (auth_register_device(headers, info, resp))
+		goto error;
 
 	/* Store the login details */
 	if (populate_sota_dir(opt, resp, key))
-		exit(EXIT_FAILURE);
+		goto error;
+
+	/* No need for cleanup on signals after this point */
+	set_signals(SIG_DFL);
 
 	cout << "Device is now registered." << endl;
-
 	if (opt.start_daemon) {
 		cout << "Starting " SOTA_CLIENT " daemon" << endl;
 		spawn("systemctl start " SOTA_CLIENT);
 	}
 
-	exit(EXIT_SUCCESS);
+	return 0;
+error:
+	set_signals(SIG_DFL);
+	cleanup();
+
+	return -1;
 }

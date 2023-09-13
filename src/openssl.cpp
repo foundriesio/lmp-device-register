@@ -6,13 +6,6 @@
 
 #include <device_register.h>
 
-#define leave \
-({ cerr << "Error !"<< endl; \
-   cerr << "  Commit : " << GIT_COMMIT << endl; \
-   cerr << "  File: openssl.cpp, Func: " << __func__ \
-   << " Line: " << __LINE__ << endl; \
-   return -1; })
-
 static int add_ext(STACK_OF(X509_EXTENSION)*sk, int nid, char *value)
 {
 	X509_EXTENSION *ex = X509V3_EXT_conf_nid(NULL, NULL, nid, value);

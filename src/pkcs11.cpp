@@ -7,13 +7,6 @@
 #include <device_register.h>
 #include <libp11.h>
 
-#define leave \
-({ cerr << "Error !"<< endl; \
-   cerr << " Commit: " << GIT_COMMIT << endl; \
-   cerr << " File: pkcs11.cpp, Func: " << __func__ \
-   << " Line: " << __LINE__ << endl; \
-   return -1; })
-
 /* HSM default information */
 static const struct lmp_hsm {
 	string token;
@@ -139,8 +132,7 @@ static int pkcs11_initialize(const lmp_options &opt)
 	return 0;
 }
 
-/* Verify if the HSM has any public or private keys with the given label */
-static bool key_exists(PKCS11_TOKEN *token, string label)
+static bool lmp_keys(PKCS11_TOKEN *token)
 {
 	PKCS11_KEY *key = NULL;
 	unsigned int n = 0;
@@ -149,7 +141,7 @@ static bool key_exists(PKCS11_TOKEN *token, string label)
 		return false;
 
 	for ( ; key && n; key++, n--) {
-		if (key->label == label)
+		if (key->label == hsm_cfg.tls_lbl)
 			return true;
 	}
 
@@ -157,15 +149,14 @@ static bool key_exists(PKCS11_TOKEN *token, string label)
 		return false;
 
 	for ( ; key && n; key++, n--) {
-		if (key->label == label)
+		if (key->label == hsm_cfg.tls_lbl)
 			return true;
 	}
 
 	return false;
 }
 
-/* Remove keys matching a label */
-static int remove_keys(PKCS11_TOKEN *token, string label)
+static int remove_lmp_keys(PKCS11_TOKEN *token)
 {
 	PKCS11_KEY *key = NULL;
 	unsigned int n = 0;
@@ -174,9 +165,10 @@ static int remove_keys(PKCS11_TOKEN *token, string label)
 		return 0;
 
 	for ( ; key && n; key++, n--) {
-		if (key->label == label) {
+		if (key->label == hsm_cfg.tls_lbl) {
 			cout << "PKCS11: Removing private key with \""
-			     << label << "\" label" << endl;
+			     << hsm_cfg.tls_lbl << "\" label" << endl;
+
 			if (PKCS11_remove_key(key))
 				leave;
 		}
@@ -186,18 +178,19 @@ static int remove_keys(PKCS11_TOKEN *token, string label)
 		return 0;
 
 	for ( ; key && n; key++, n--) {
-		if (key->label == label) {
+		if (key->label == hsm_cfg.tls_lbl) {
 			cout << "PKCS11: Removing public key with \""
-			     << label << "\" label" << endl;
+			     << hsm_cfg.tls_lbl << "\" label" << endl;
+
 			if (PKCS11_remove_key(key))
 				leave;
 		}
 	}
+
 	return 0;
 }
 
-/* Verify if the HSM has any certificate with the given label */
-static bool cert_exists(PKCS11_TOKEN *token, string label)
+static bool lmp_certs(PKCS11_TOKEN *token)
 {
 	PKCS11_CERT *cert = NULL;
 	unsigned int n = 0;
@@ -206,14 +199,13 @@ static bool cert_exists(PKCS11_TOKEN *token, string label)
 		return false;
 
 	for ( ; cert && n; cert++, n--)
-		if (cert->label == label)
+		if (cert->label == hsm_cfg.crt_lbl)
 			return true;
 
 	return false;
 }
 
-/* Remove certificates matching a label */
-static int remove_certs(PKCS11_TOKEN *token, string label)
+static int remove_lmp_certs(PKCS11_TOKEN *token)
 {
 	PKCS11_CERT *cert = NULL;
 	unsigned int n = 0;
@@ -222,10 +214,11 @@ static int remove_certs(PKCS11_TOKEN *token, string label)
 		return 0;
 
 	for ( ; cert && n; cert++, n--) {
-		if (cert->label != label)
+		if (cert->label != hsm_cfg.crt_lbl)
 			continue;
-		cout << "PKCS11: Removing certificate with \"" << label
-		     << "\" label" << endl;
+
+		cout << "PKCS11: Removing certificate with \""
+		     << hsm_cfg.crt_lbl << "\" label" << endl;
 		if (PKCS11_remove_certificate(cert))
 			leave;
 	}
@@ -244,6 +237,8 @@ int pkcs11_create_csr(const lmp_options &opt, string &pkey, string &csr)
 	EVP_PKEY *pub = NULL;
 	unsigned int nslots = 0;
 	unsigned int n = 0;
+	int ret = 0;
+	bool created_keys = false;
 	PKCS11_EC_KGEN ec = {
 		.curve = "P-256",
 	};
@@ -263,10 +258,10 @@ again:
 	ctx = PKCS11_CTX_new();
 
 	if (PKCS11_CTX_load(ctx, opt.hsm_module.c_str()))
-		leave;
+		leave_exit;
 
 	if (PKCS11_enumerate_slots(ctx, &slots, &nslots))
-		leave;
+		leave_exit;
 
 	slot = PKCS11_find_token(ctx, slots, nslots);
 
@@ -281,67 +276,75 @@ again:
 			PKCS11_CTX_free(ctx);
 
 			if (pkcs11_initialize(opt))
-				leave;
+				leave_exit;
 
 			init = true;
 			goto again;
 		}
 		cout << "PKCS11 token not found after initializing" << endl;
-		leave;
+		leave_exit;
 	} else {
 		cout << "PKCS11 token " << HSM_TOKEN_STR << " found" << endl;
 	}
 
 	if (PKCS11_open_session(slot, 1))
-		leave;
+		leave_exit;
 
 	if (PKCS11_login(slot, 0, opt.hsm_pin.c_str()))
-		leave;
+		leave_exit;
 
 	if (PKCS11_generate_key(slot->token, &attr))
-		leave;
+		leave_exit;
+
+	/* Keys have been created */
+	created_keys = true;
 
 	if (PKCS11_enumerate_public_keys(slot->token, &key, &n) || !n)
-		leave;
+		leave_exit;
 
 	for ( ; !pub && key && n; key++, n--) {
 		if (key->label == hsm_cfg.tls_lbl)
 			pub = PKCS11_get_public_key(key);
 	}
-
 	if (!pub)
-		leave;
+		leave_exit;
 
 	if (PKCS11_enumerate_keys(slot->token, &key, &n) || !n)
-		leave;
+		leave_exit;
 
 	for ( ; !prv && key && n; key++, n--) {
 		if (key->label == hsm_cfg.tls_lbl)
 			prv = PKCS11_get_private_key(key);
 	}
-
 	if (!prv)
-		leave;
-
-	if (PKCS11_logout(slot))
-		leave;
+		leave_exit;
 
 	/* Use OpenSSL to generate the request in the csr buffer */
 	if (openssl_gen_csr(opt, pub, prv, csr))
-		leave;
+		leave_exit;
 
 	pkey = hsm_cfg.tls_id;
+
+exit:
+	/* Cleanup the generated key pair in case of errors */
+	if (ret && created_keys)
+		remove_lmp_keys(slot->token);
+
+	if (slot)
+		PKCS11_logout(slot);
 
 	/* Free the keys */
 	EVP_PKEY_free(pub);
 	EVP_PKEY_free(prv);
 
 	/* Release context */
-	PKCS11_release_all_slots(ctx, slots, nslots);
-	PKCS11_CTX_unload(ctx);
-	PKCS11_CTX_free(ctx);
+	if (ctx) {
+		PKCS11_release_all_slots(ctx, slots, nslots);
+		PKCS11_CTX_unload(ctx);
+		PKCS11_CTX_free(ctx);
+	}
 
-	return 0;
+	return ret;
 }
 
 /* Write a PEM cerficate in the PKCS#11 database (secure storage - ie RPMB ) */
@@ -351,14 +354,15 @@ int pkcs11_store_cert(lmp_options &opt, X509 *cert)
 	PKCS11_SLOT *slot = NULL;
 	PKCS11_CTX *ctx = NULL;
 	unsigned int nslots = 0;
+	int ret = 0;
 
 	ctx = PKCS11_CTX_new();
 
 	if (PKCS11_CTX_load(ctx, opt.hsm_module.c_str()))
-		leave;
+		leave_exit;
 
 	if (PKCS11_enumerate_slots(ctx, &slots, &nslots))
-		leave;
+		leave_exit;
 
 	slot = PKCS11_find_token(ctx, slots, nslots);
 
@@ -366,18 +370,23 @@ int pkcs11_store_cert(lmp_options &opt, X509 *cert)
 		slot = PKCS11_find_next_token(ctx, slots, nslots, slot);
 
 	if (!slot || slot->token->label != hsm_cfg.token)
-		leave;
+		leave_exit;
 
 	if (PKCS11_open_session(slot, 1))
-		leave;
+		leave_exit;
 
 	if (PKCS11_login(slot, 0, opt.hsm_pin.c_str()))
-		leave;
+		leave_exit;
 
 	if (PKCS11_store_certificate(slot->token, cert, (char *)HSM_CRT_STR,
 				     (unsigned char *)&hsm_cfg.crt_id,
 				     sizeof(hsm_cfg.crt_id), NULL))
-		leave;
+		leave_exit;
+
+exit:
+	/* Cleanup the stored cert in case of errors */
+	if (ret)
+		remove_lmp_certs(slot->token);
 
 	if (PKCS11_logout(slot))
 		leave;
@@ -388,50 +397,60 @@ int pkcs11_store_cert(lmp_options &opt, X509 *cert)
 	PKCS11_CTX_unload(ctx);
 	PKCS11_CTX_free(ctx);
 
-	return 0;
+	return ret;
+}
+
+static int check_keys(lmp_options &opt, PKCS11_SLOT *slot)
+{
+	if (!lmp_keys(slot->token))
+		return 0;
+
+	if (opt.force)
+		return remove_lmp_keys(slot->token);
+
+	cerr << "Found key with conflicting \"" << hsm_cfg.tls_lbl
+	     << "\" label" << endl;
+
+	return -1;
+}
+
+static int check_certs(lmp_options &opt, PKCS11_SLOT *slot)
+{
+	if (!lmp_certs(slot->token))
+		return 0;
+
+	if (opt.force)
+		return remove_lmp_certs(slot->token);
+
+	cerr << "Found certificate with conflicting \"" << hsm_cfg.crt_lbl
+	     << "\" label" << endl;
+
+	return -1;
 }
 
 static int check_hsm_objects(lmp_options &opt, PKCS11_SLOT *slot)
 {
-	int ret = 0;
-
 	if (PKCS11_open_session(slot, 1))
 		leave;
 
 	if (PKCS11_login(slot, 0, opt.hsm_pin.c_str()))
 		leave;
 
-	if (key_exists(slot->token, hsm_cfg.tls_lbl)) {
-		if (opt.force) {
-			if (remove_keys(slot->token, hsm_cfg.tls_lbl))
-				ret = -1;
-		} else {
-			cerr << "Found key with conflicting \""
-			     << hsm_cfg.tls_lbl << "\" label" << endl;
-			ret = -1;
-		}
-	}
+	if (check_keys(opt, slot))
+		goto error;
 
-	if (cert_exists(slot->token, hsm_cfg.crt_lbl)) {
-		if (opt.force) {
-			if (remove_certs(slot->token, hsm_cfg.crt_lbl))
-				ret = -1;
-		} else {
-			cerr << "Found certificate with conflicting \""
-			     << hsm_cfg.crt_lbl << "\" label" << endl;
-			ret = -1;
-		}
-	}
-
-	if (ret && !opt.force) {
-		cerr << "Re-run with --force 1 to cleanup conflicting "
-			"keys and certificates" << endl;
-	}
+	if (check_certs(opt, slot))
+		goto error;
 
 	if (PKCS11_logout(slot))
 		leave;
 
-	return ret;
+	return 0;
+error:
+	if (!opt.force)
+		cerr << "Re-run with --force 1 to cleanup conflicting "
+			"keys and certificates" << endl;
+	return -1;
 }
 
 int pkcs11_check_hsm(lmp_options &opt)
@@ -468,7 +487,7 @@ int pkcs11_check_hsm(lmp_options &opt)
 	return ret;
 }
 
-int pkcs11_remove_keys(lmp_options &opt)
+int pkcs11_cleanup(lmp_options &opt)
 {
 	PKCS11_SLOT *slots = NULL;
 	PKCS11_SLOT *slot = NULL;
@@ -476,9 +495,10 @@ int pkcs11_remove_keys(lmp_options &opt)
 	unsigned int nslots = 0;
 
 	if (opt.hsm_module.empty())
-		leave;
+		return 0;
 
 	cout << "PKCS11: Cleaning up created keys" << endl;
+
 	ctx = PKCS11_CTX_new();
 
 	if (PKCS11_CTX_load(ctx, opt.hsm_module.c_str()))
@@ -502,7 +522,11 @@ int pkcs11_remove_keys(lmp_options &opt)
 	if (PKCS11_login(slot, 0, opt.hsm_pin.c_str()))
 		leave;
 
-	remove_keys(slot->token, hsm_cfg.tls_lbl);
+	if (remove_lmp_keys(slot->token))
+		leave;
+
+	if (remove_lmp_certs(slot->token))
+		leave;
 
 	if (PKCS11_logout(slot))
 		leave;
