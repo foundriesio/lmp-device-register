@@ -67,6 +67,22 @@
 #define SOTA_PEM "/client.pem"
 #define SOTA_SQL "/sql.db"
 
+
+#define leave_messages \
+   cerr << "Error !"<< endl; \
+   cerr << " Commit: " << GIT_COMMIT << endl; \
+   cerr << " File: " << __FILE__ << ", Func: " << __func__ \
+   << " Line: " << __LINE__ << endl;
+
+#define leave \
+({ leave_messages \
+   return -1; })
+
+#define leave_exit \
+({ leave_messages \
+   ret = -1; \
+   goto exit; })
+
 using boost::property_tree::ptree;
 using std::stringstream;
 using std::string;
@@ -102,7 +118,7 @@ struct lmp_options {
 typedef std::map<std::string, string> http_headers;
 
 int auth_register_device(http_headers &headers, ptree &device, ptree &resp);
-void auth_get_http_headers(lmp_options &opt, http_headers &headers);
+int auth_get_http_headers(lmp_options &opt, http_headers &headers);
 int auth_ping_server(void);
 
 int options_parse(int argc, char **argv, lmp_options &options);
@@ -115,5 +131,5 @@ int pkcs11_create_csr(const lmp_options &options, string &key, string &csr);
 int pkcs11_store_cert(lmp_options &opt, X509 *cert);
 int pkcs11_get_uuid(lmp_options &options);
 int pkcs11_check_hsm(lmp_options &opt);
-int pkcs11_remove_keys(lmp_options &opt);
+int pkcs11_cleanup(lmp_options &opt);
 #endif

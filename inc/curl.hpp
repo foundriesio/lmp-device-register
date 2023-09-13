@@ -110,7 +110,7 @@ public:
 		CURLcode res = curl_easy_perform(curl);
 		if (res != CURLE_OK) {
 			cerr << "Unable to post to " << _url << ": " << curl_easy_strerror(res) << endl;
-			exit(1);
+			return -1;
 		}
 
 		if (chunk != nullptr) {
@@ -121,7 +121,7 @@ public:
 		res = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
 		if (res != CURLE_OK) {
 			cerr << "Unable to get curl info: " << curl_easy_strerror(res) << endl;
-			exit(1);
+			return -1;
 		}
 		ParseResponse(body, resp);
 		return code;
