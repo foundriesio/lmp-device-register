@@ -16,8 +16,17 @@ static void dump_resp_error(string message, gint64 code, ptree resp)
 	if (resp.data().length())
 		cerr << resp.data() << endl;
 
-	for (const auto& it: resp)
-		cerr << it.first << ": " << it.second.data() << endl;
+	for (const auto& it: resp) {
+		const auto resp_elem{it.first};
+		if (resp_elem == "errors") {
+			cerr << resp_elem << ":" << endl;
+			for (auto it_err: it.second) {
+				cerr << '\t' << it_err.first << ": " << it_err.second.data() << endl;
+			}
+		} else {
+			cerr << it.first << ": " << it.second.data() << endl;
+		}
+	}
 }
 
 /* Returns the access_token on success, and empty string on errors */
