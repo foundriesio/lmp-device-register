@@ -27,6 +27,7 @@
 #include <openssl/err.h>
 #include <openssl/buffer.h>
 
+#include <boost/algorithm/hex.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/beast/core/detail/base64.hpp>
 #include <boost/filesystem.hpp>
