@@ -239,6 +239,8 @@ int pkcs11_create_csr(const lmp_options &opt, string &pkey, string &csr)
 	unsigned int n = 0;
 	int ret = 0;
 	bool created_keys = false;
+	std::vector<unsigned char> tls_id_bytes;
+	PKCS11_params params = {.extractable = 0, .sensitive = 1};
 	PKCS11_EC_KGEN ec = {
 		.curve = "P-256",
 	};
@@ -246,14 +248,18 @@ int pkcs11_create_csr(const lmp_options &opt, string &pkey, string &csr)
 		.type = EVP_PKEY_EC,
 		.token_label = hsm_cfg.token.c_str(),
 		.key_label = hsm_cfg.tls_lbl.c_str(),
-		.key_id = hsm_cfg.tls_id.c_str(),
 	};
 	bool init = false;
+
+	boost::algorithm::unhex(hsm_cfg.tls_id, std::back_inserter(tls_id_bytes));
+	attr.key_id = tls_id_bytes.data();
+	attr.id_len = tls_id_bytes.size();
 
 	if (opt.hsm_module.empty())
 		leave;
 
 	attr.kgen.ec = &ec;
+	attr.key_params = &params;
 again:
 	ctx = PKCS11_CTX_new();
 
@@ -293,7 +299,7 @@ again:
 	if (PKCS11_login(slot, 0, opt.hsm_pin.c_str()))
 		leave_exit;
 
-	if (PKCS11_generate_key(slot->token, &attr))
+	if (PKCS11_keygen(slot->token, &attr))
 		leave_exit;
 
 	/* Keys have been created */
