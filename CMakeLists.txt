@@ -6,6 +6,7 @@ cmake_minimum_required (VERSION 3.5)
 
 project(lmp-device-register)
 
+option(STATIC_LINK "Statically link lmp-device-register" OFF)
 option(DOCKER_COMPOSE_APP "Set to ON to compile with support for configuring compose-apps" OFF)
 
 if(DOCKER_COMPOSE_APP)
@@ -63,10 +64,27 @@ pkg_search_module(GLIB REQUIRED glib-2.0)
 # Use C++11, but without GNU or other extensions
 set(CMAKE_CXX_STANDARD 11)
 
+if(STATIC_LINK)
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+    set(BUILD_SHARED_LIBS OFF)
+    set(CMAKE_EXE_LINKER_FLAGS "-static")
+endif(STATIC_LINK)
+
 if(DISABLE_PKCS11)
 add_executable(lmp-device-register src/main.cpp src/options.cpp src/auth.cpp src/pkcs11_stub.cpp src/openssl.cpp)
-target_link_libraries(lmp-device-register ${CURL_LIBRARIES} ${Boost_LIBRARIES} ${GLIB_LDFLAGS} ${OPENSSL_LIBRARIES})
+
+if(STATIC_LINK)
+    target_link_libraries(lmp-device-register ${Boost_LIBRARIES} -lintl /usr/lib/libglib-2.0.a /usr/lib/libcurl.a /usr/lib/libcrypto.a /usr/lib/libnghttp2.a /usr/lib/libidn2.a /usr/lib/libunistring.a /usr/lib/libbrotlicommon.a /usr/lib/libbrotlidec.a /usr/lib/libcares.a /usr/lib/libpsl.a /usr/lib/libcurl.a /usr/lib/libssl.a)
+else (STATIC_LINK)
+    target_link_libraries(lmp-device-register ${CURL_LIBRARIES} ${Boost_LIBRARIES} ${GLIB_LDFLAGS} ${OPENSSL_LIBRARIES})
+endif(STATIC_LINK)
+
 else(DISABLE_PKCS11)
+
+if(STATIC_LINK)
+	message(FATAL_ERROR "STATIC_LINK not possible with PKCS11 enabled")
+endif(STATIC_LINK)
+
 pkg_check_modules(LIBP11 REQUIRED libp11)
 add_executable(lmp-device-register src/main.cpp src/options.cpp src/auth.cpp src/pkcs11.cpp src/openssl.cpp)
 target_link_libraries(lmp-device-register ${CURL_LIBRARIES} ${Boost_LIBRARIES} ${GLIB_LDFLAGS} ${OPENSSL_LIBRARIES} ${LIBP11_LIBRARIES})
