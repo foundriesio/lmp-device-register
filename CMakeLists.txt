@@ -54,7 +54,7 @@ add_definitions('-Wall')
 
 # find all required libraries
 set(Boost_USE_STATIC_LIBS ON)
-find_package(Boost COMPONENTS filesystem iostreams program_options system REQUIRED)
+find_package(Boost COMPONENTS filesystem iostreams program_options REQUIRED)
 find_package(CURL REQUIRED)
 find_package(PkgConfig REQUIRED)
 find_package(OpenSSL 3.0.0 REQUIRED)
