@@ -149,14 +149,8 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 	OPT_DEF_STR("tags,t", opt.pacman_tags, tags, TAGS_HELP)
 	OPT_STR("api-token,T", opt.api_token, API_TOKEN_HELP)
 	OPT_STR("name,n", opt.name, NAME_HELP)
-#if defined DEVICE_API
-	OPT_DEF_STR("device-api", opt.device_api, DEVICE_API, DEVICE_API_HELP)
-#else
+#if !defined DEVICE_API && !defined OAUTH_API
 	OPT_STR("device-api", opt.device_api, DEVICE_API_HELP)
-#endif
-#if defined OAUTH_API
-	OPT_DEF_STR("oauth-api", opt.oauth_api, OAUTH_API, OAUTH_API_HELP)
-#else
 	OPT_STR("oauth-api", opt.oauth_api, OAUTH_API_HELP)
 #endif
 
@@ -181,9 +175,19 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 	("help-advanced", "print advanced options")
 	OPT_DEF_STR("api-token-header,H",
 		    opt.api_token_header, "OSF-TOKEN", API_TOKEN_HDR_HELP)
+#if defined DEVICE_API
+	OPT_DEF_STR("device-api", opt.device_api, DEVICE_API, DEVICE_API_HELP)
+#else
+	OPT_STR("device-api", opt.device_api, DEVICE_API_HELP)	
+#endif
 	OPT_DEF_BOOL("force", opt.force, false, FORCE_HELP)
 	OPT_DEF_STR("hwid,i", opt.hwid, HARDWARE_ID, HWID_HELP)
 	OPT_DEF_BOOL("mlock-all,l", opt.mlock, true, MLOCK_HELP)
+#if defined OAUTH_API
+	OPT_DEF_STR("oauth-api", opt.oauth_api, OAUTH_API, OAUTH_API_HELP)
+#else
+	OPT_STR("oauth-api", opt.oauth_api, OAUTH_API_HELP)
+#endif
 	OPT_DEF_BOOL("production,p", opt.production, prod, PRODUCTION_HELP)
 	OPT_DEF_BOOL("start-daemon", opt.start_daemon,true, DAEMON_HELP)
 	OPT_DEF_BOOL("use-ostree-server", opt.use_server, true, OSTREE_SRV_HELP)
