@@ -144,11 +144,11 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 
 	("help", "print usage")
 	OPT_DEF_STR("sota-dir,d", opt.sota_dir, SOTA_DIR, SOTA_DIR_HELP)
-	OPT_STR("device-group,g", opt.device_group, DEVICE_GROUP_HELP)
 	OPT_DEF_STR("factory,f", opt.factory, factory, FACTORY_HELP)
+	OPT_STR("device-group,g", opt.device_group, DEVICE_GROUP_HELP)
+	OPT_STR("name,n", opt.name, NAME_HELP)
 	OPT_DEF_STR("tags,t", opt.pacman_tags, tags, TAGS_HELP)
 	OPT_STR("api-token,T", opt.api_token, API_TOKEN_HELP)
-	OPT_STR("name,n", opt.name, NAME_HELP)
 #if !defined DEVICE_API && !defined OAUTH_API
 	OPT_STR("device-api", opt.device_api, DEVICE_API_HELP)
 	OPT_STR("oauth-api", opt.oauth_api, OAUTH_API_HELP)
