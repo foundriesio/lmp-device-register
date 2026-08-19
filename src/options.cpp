@@ -49,8 +49,8 @@ namespace po = boost::program_options;
 #define APPS_HELP \
 "Configure package-manager for this comma separate list of apps."
 
-#define TAGS_HELP \
-"Configure " SOTA_CLIENT " to only apply updates from Targets with these tags. Default value is probed from /etc/os-release."
+#define TAG_HELP \
+"Configure " SOTA_CLIENT " to use this tag for finding updates on the server. Default value is probed from /etc/os-release."
 
 #define DAEMON_HELP \
 "Start the " SOTA_CLIENT " systemd service after registration."
@@ -147,7 +147,7 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 	OPT_DEF_STR("factory,f", opt.factory, factory, FACTORY_HELP)
 	OPT_STR("device-group,g", opt.device_group, DEVICE_GROUP_HELP)
 	OPT_STR("name,n", opt.name, NAME_HELP)
-	OPT_DEF_STR("tags,t", opt.pacman_tags, tags, TAGS_HELP)
+	OPT_DEF_STR("tag,t", opt.pacman_tags, tags, TAG_HELP)
 	OPT_STR("api-token,T", opt.api_token, API_TOKEN_HELP)
 #if !defined DEVICE_API && !defined OAUTH_API
 	OPT_STR("device-api", opt.device_api, DEVICE_API_HELP)
