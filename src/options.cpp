@@ -85,6 +85,9 @@ namespace po = boost::program_options;
 #define FORCE_HELP \
 "Force registration, removing data from previous execution."
 
+#define DEVICE_API_HELP \
+"The device registration API endpoint URL. eg: https://example.com/v1/devices"
+
 static void get_factory_tags_info(const string os_release, string &factory,
 				  string &fsrc, string &tag, string &tsrc)
 {
@@ -155,6 +158,11 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 	OPT_DEF_STR("api-token-header,H",
 		    opt.api_token_header, "OSF-TOKEN",API_TOKEN_HDR_HELP)
 	OPT_DEF_BOOL("force", opt.force, false, FORCE_HELP)
+#if defined DEVICE_API
+	OPT_DEF_STR("device-api", opt.device_api, DEVICE_API, DEVICE_API_HELP)
+#else
+	OPT_STR("device-api", opt.device_api, DEVICE_API_HELP)
+#endif
 
 #if defined DOCKER_COMPOSE_APP
 	OPT_STR("apps,a", opt.apps, APPS_HELP)
@@ -333,6 +341,11 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 			return -1;
 		}
 	}
+
+	/* Env var overrides CLI and compile-time default */
+	const char *device_api_env = std::getenv(ENV_DEVICE_API);
+	if (device_api_env != nullptr)
+		opt.device_api = device_api_env;
 
 	cout << "PID memory " << (opt.mlock ? "locked" : "unlocked") <<  endl;
 

@@ -373,7 +373,7 @@ int main(int argc, char **argv)
 		return -1;
 
 	/* Check that the registration server and endpoint are reachable */
-	if (auth_ping_server())
+	if (auth_ping_server(opt))
 		return -1;
 
 	/* Register signal handler for cleaning up */
@@ -390,7 +390,7 @@ int main(int argc, char **argv)
 	cout << "Registering device " << opt.name <<
 		" with factory " << opt.factory << endl;
 
-	if (auth_register_device(headers, info, resp))
+	if (auth_register_device(opt, headers, info, resp))
 		goto error;
 
 	/* Store the login details */

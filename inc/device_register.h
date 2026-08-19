@@ -104,6 +104,7 @@ struct lmp_options {
 	string hsm_pin;
 	string sota_dir;
 	string pacman_tags;
+	string device_api;
 	bool start_daemon;
 	bool use_server;
 	bool production;
@@ -118,9 +119,9 @@ struct lmp_options {
 
 typedef std::map<std::string, string> http_headers;
 
-int auth_register_device(http_headers &headers, ptree &device, ptree &resp);
+int auth_register_device(lmp_options &opt, http_headers &headers, ptree &device, ptree &resp);
 int auth_get_http_headers(lmp_options &opt, http_headers &headers);
-int auth_ping_server(void);
+int auth_ping_server(lmp_options &opt);
 
 int options_parse(int argc, char **argv, lmp_options &options);
 

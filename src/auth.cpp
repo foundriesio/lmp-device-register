@@ -122,17 +122,13 @@ int auth_get_http_headers(lmp_options &opt, http_headers &headers)
 }
 
 /* Register device using the oauth token. Token need "devices:create" scope */
-int auth_register_device(http_headers &headers, ptree &device, ptree &resp)
+int auth_register_device(lmp_options &opt, http_headers &headers, ptree &device, ptree &resp)
 {
-	const char *api = std::getenv(ENV_DEVICE_API);
 	stringstream data;
 	gint64 code;
 
-	if (api == nullptr)
-		api = DEVICE_API;
-
 	write_json(data, device);
-	code = Curl(api).Post(headers, data.str(), resp);
+	code = Curl(opt.device_api).Post(headers, data.str(), resp);
 	if (code != 201) {
 		dump_resp_error("Unable to create device", code, resp);
 		return -1;
@@ -141,15 +137,10 @@ int auth_register_device(http_headers &headers, ptree &device, ptree &resp)
 	return 0;
 }
 
-int auth_ping_server(void)
+int auth_ping_server(lmp_options &opt)
 {
-	/* Get the device API from the environment */
-	const char *api = std::getenv(ENV_DEVICE_API);
-	if (api == nullptr)
-		api = DEVICE_API;
-
-	cout << "Using DEVICE_API: " << api << endl;
-	const auto ping_res{Curl(api).PingEndpoint()};
+	cout << "Using DEVICE_API: " << opt.device_api << endl;
+	const auto ping_res{Curl(opt.device_api).PingEndpoint()};
 
 	if (!std::get<0>(ping_res)) {
 		cerr << std::get<1>(ping_res) << endl;
