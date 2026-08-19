@@ -50,7 +50,7 @@ namespace po = boost::program_options;
 "Configure package-manager for this comma separate list of apps."
 
 #define TAGS_HELP \
-"Configure " SOTA_CLIENT " to only apply updates from Targets with these tags."
+"Configure " SOTA_CLIENT " to only apply updates from Targets with these tags. Default value is probed from /etc/os-release."
 
 #define DAEMON_HELP \
 "Start the " SOTA_CLIENT " systemd service after registration."
@@ -71,7 +71,7 @@ namespace po = boost::program_options;
 "Mark the device as a production device."
 
 #define FACTORY_HELP \
-"The factory name to subscribe to."
+"The factory name to subscribe to. Default value is probed from /etc/os-release."
 
 #define HSM_SO_PIN_HELP \
 "The PKCS#11 security officer pin - HSM only."
