@@ -132,7 +132,8 @@ static void get_factory_tags_info(const string os_release, string &factory,
 }
 
 static void set_default_options(lmp_options &opt, string factory, string tags,
-				po::options_description &desc)
+				po::options_description &desc,
+				po::options_description &advanced)
 {
 	bool prod = false;
 
@@ -142,25 +143,12 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 	desc.add_options()
 
 	("help", "print usage")
-	OPT_DEF_BOOL("use-ostree-server", opt.use_server, true, OSTREE_SRV_HELP)
-	OPT_DEF_BOOL("production,p", opt.production, prod, PRODUCTION_HELP)
-	OPT_DEF_BOOL("start-daemon", opt.start_daemon,true, DAEMON_HELP)
 	OPT_DEF_STR("sota-dir,d", opt.sota_dir, SOTA_DIR, SOTA_DIR_HELP)
 	OPT_STR("device-group,g", opt.device_group, DEVICE_GROUP_HELP)
 	OPT_DEF_STR("factory,f", opt.factory, factory, FACTORY_HELP)
-	OPT_STR("hsm-so-pin,S", opt.hsm_so_pin, HSM_SO_PIN_HELP)
-	OPT_DEF_BOOL("mlock-all,l", opt.mlock, true, MLOCK_HELP)
-	OPT_DEF_BOOL("validate-uuid,v", opt.vuuid, true, VUUID_HELP)
-	OPT_DEF_STR("hwid,i", opt.hwid, HARDWARE_ID, HWID_HELP)
 	OPT_DEF_STR("tags,t", opt.pacman_tags, tags, TAGS_HELP)
 	OPT_STR("api-token,T", opt.api_token, API_TOKEN_HELP)
-	OPT_STR("hsm-module,m", opt.hsm_module, HSM_HELP)
-	OPT_STR("hsm-pin,P", opt.hsm_pin, HSM_PIN_HELP)
-	OPT_STR("uuid,u", opt.uuid, UUID_HELP)
 	OPT_STR("name,n", opt.name, NAME_HELP)
-	OPT_DEF_STR("api-token-header,H",
-		    opt.api_token_header, "OSF-TOKEN",API_TOKEN_HDR_HELP)
-	OPT_DEF_BOOL("force", opt.force, false, FORCE_HELP)
 #if defined DEVICE_API
 	OPT_DEF_STR("device-api", opt.device_api, DEVICE_API, DEVICE_API_HELP)
 #else
@@ -188,15 +176,30 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 		    RESTORABLE_APP_HELP)
 #endif
 	;
+
+	advanced.add_options()
+	("help-advanced", "print advanced options")
+	OPT_DEF_STR("api-token-header,H",
+		    opt.api_token_header, "OSF-TOKEN", API_TOKEN_HDR_HELP)
+	OPT_DEF_BOOL("force", opt.force, false, FORCE_HELP)
+	OPT_DEF_STR("hwid,i", opt.hwid, HARDWARE_ID, HWID_HELP)
+	OPT_DEF_BOOL("mlock-all,l", opt.mlock, true, MLOCK_HELP)
+	OPT_DEF_BOOL("production,p", opt.production, prod, PRODUCTION_HELP)
+	OPT_DEF_BOOL("start-daemon", opt.start_daemon,true, DAEMON_HELP)
+	OPT_DEF_BOOL("use-ostree-server", opt.use_server, true, OSTREE_SRV_HELP)
+	OPT_STR("uuid,u", opt.uuid, UUID_HELP)
+	OPT_DEF_BOOL("validate-uuid,v", opt.vuuid, true, VUUID_HELP)
+	;
 }
 
 static int parse_command_line(int argc, char **argv,
-			       po::options_description &desc)
+			       po::options_description &desc,
+			       po::options_description &advanced)
 {
 	po::options_description all("lmp-device-register all options");
 	po::variables_map vm;
 
-	all.add(desc);
+	all.add(desc).add(advanced);
 	try {
 		po::store(
 			po::parse_command_line(
@@ -205,8 +208,15 @@ static int parse_command_line(int argc, char **argv,
 				all),
 			vm);
 
+		if (vm.count("help-advanced")) {
+			cout << desc;
+			cout << advanced;
+			cout << "Git Commit " << GIT_COMMIT << endl;
+			return -1;
+		}
 		if (vm.count("help")) {
 			cout << desc;
+			cout << "Use --help-advanced for more options" << endl;
 			cout << "Git Commit " << GIT_COMMIT << endl;
 			return -1;
 		}
@@ -292,6 +302,7 @@ static int get_uuid(lmp_options &opt)
 int options_parse(int argc, char **argv, lmp_options &opt)
 {
 	po::options_description desc("lmp-device-register options");
+	po::options_description advanced("Advanced options");
 	string factory;
 	string fsrc;
 	string tags;
@@ -300,10 +311,10 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 	/* Read from environment or configuration file */
 	get_factory_tags_info(LMP_OS_STR, factory, fsrc, tags, tsrc);
 
-	set_default_options(opt, factory, tags, desc);
+	set_default_options(opt, factory, tags, desc, advanced);
 
 	/* Command line takes precedence over any parameters */
-	if (parse_command_line(argc, argv, desc))
+	if (parse_command_line(argc, argv, desc, advanced))
 		return -1;
 
 	if (opt.factory.empty() || opt.factory == "lmp") {
