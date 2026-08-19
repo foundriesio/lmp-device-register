@@ -105,6 +105,7 @@ struct lmp_options {
 	string sota_dir;
 	string pacman_tags;
 	string device_api;
+	string oauth_api;
 	bool start_daemon;
 	bool use_server;
 	bool production;

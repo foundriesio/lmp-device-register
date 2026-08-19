@@ -88,6 +88,9 @@ namespace po = boost::program_options;
 #define DEVICE_API_HELP \
 "The device registration API endpoint URL. eg: https://example.com/v1/devices"
 
+#define OAUTH_API_HELP \
+"The OAuth2 API base URL used for device authorization. eg: https://example.com/oauth"
+
 static void get_factory_tags_info(const string os_release, string &factory,
 				  string &fsrc, string &tag, string &tsrc)
 {
@@ -162,6 +165,11 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 	OPT_DEF_STR("device-api", opt.device_api, DEVICE_API, DEVICE_API_HELP)
 #else
 	OPT_STR("device-api", opt.device_api, DEVICE_API_HELP)
+#endif
+#if defined OAUTH_API
+	OPT_DEF_STR("oauth-api", opt.oauth_api, OAUTH_API, OAUTH_API_HELP)
+#else
+	OPT_STR("oauth-api", opt.oauth_api, OAUTH_API_HELP)
 #endif
 
 #if defined DOCKER_COMPOSE_APP
@@ -346,6 +354,10 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 	const char *device_api_env = std::getenv(ENV_DEVICE_API);
 	if (device_api_env != nullptr)
 		opt.device_api = device_api_env;
+
+	const char *oauth_api_env = std::getenv(ENV_OAUTH_BASE);
+	if (oauth_api_env != nullptr)
+		opt.oauth_api = oauth_api_env;
 
 	cout << "PID memory " << (opt.mlock ? "locked" : "unlocked") <<  endl;
 
