@@ -30,25 +30,40 @@ int openssl_gen_csr(const lmp_options &opt, EVP_PKEY *pub, EVP_PKEY *priv,
 
 	bio = BIO_new(BIO_s_mem());
 	req = X509_REQ_new();
-	name = X509_REQ_get_subject_name(req);
+	name = X509_NAME_new();
+	if (!name)
+		leave;
 
 	if (X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
 				       (const unsigned char *)
-				       opt.uuid.c_str(), -1, -1, 0) != 1)
+				       opt.uuid.c_str(), -1, -1, 0) != 1) {
+		X509_NAME_free(name);
 		leave;
+	}
 
 	if (X509_NAME_add_entry_by_txt(name, "OU", MBSTRING_ASC,
 				       (const unsigned char *)
-				       opt.factory.c_str(), -1, -1, 0) != 1)
+				       opt.factory.c_str(), -1, -1, 0) != 1) {
+		X509_NAME_free(name);
 		leave;
+	}
 
 	if (opt.production) {
 		if (X509_NAME_add_entry_by_txt(name, LN_businessCategory,
 					       MBSTRING_ASC,
 					       (const unsigned char *)
-					       "production", -1, -1, 0) != 1)
+					       "production", -1, -1, 0) != 1) {
+			X509_NAME_free(name);
 			leave;
+		}
 	}
+
+	if (X509_REQ_set_subject_name(req, name) != 1) {
+		X509_NAME_free(name);
+		leave;
+	}
+
+	X509_NAME_free(name);
 
 	ext = X509_REQ_get_extensions(req);
 	if (!ext)
@@ -99,26 +114,41 @@ int openssl_create_csr(const lmp_options &options, string &pkey, string &csr)
 
 	bio = BIO_new(BIO_s_mem());
 	req = X509_REQ_new();
-	name = X509_REQ_get_subject_name(req);
+	name = X509_NAME_new();
+	if (!name)
+		leave;
 
 	if (X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
 				       (const unsigned char *)
-				       options.uuid.c_str(), -1, -1, 0) != 1)
+				       options.uuid.c_str(), -1, -1, 0) != 1) {
+		X509_NAME_free(name);
 		leave;
+	}
 
 	if (X509_NAME_add_entry_by_txt(name, "OU", MBSTRING_ASC,
 				       (const unsigned char *)
-				       options.factory.c_str(), -1, -1, 0) != 1)
+				       options.factory.c_str(), -1, -1, 0) != 1) {
+		X509_NAME_free(name);
 		leave;
+	}
 
 
 	if (options.production) {
 		if (X509_NAME_add_entry_by_txt(name, LN_businessCategory,
 					       MBSTRING_ASC,
 					       (const unsigned char *)
-					       "production", -1, -1, 0) != 1)
+					       "production", -1, -1, 0) != 1) {
+			X509_NAME_free(name);
 			leave;
+		}
 	}
+
+	if (X509_REQ_set_subject_name(req, name) != 1) {
+		X509_NAME_free(name);
+		leave;
+	}
+
+	X509_NAME_free(name);
 
 	ext = X509_REQ_get_extensions(req);
 
