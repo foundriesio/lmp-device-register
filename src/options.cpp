@@ -49,8 +49,8 @@ namespace po = boost::program_options;
 #define APPS_HELP \
 "Configure package-manager for this comma separate list of apps."
 
-#define TAGS_HELP \
-"Configure " SOTA_CLIENT " to only apply updates from Targets with these tags."
+#define TAG_HELP \
+"Configure " SOTA_CLIENT " to use this tag for finding updates on the server. Default value is probed from /etc/os-release."
 
 #define DAEMON_HELP \
 "Start the " SOTA_CLIENT " systemd service after registration."
@@ -71,7 +71,7 @@ namespace po = boost::program_options;
 "Mark the device as a production device."
 
 #define FACTORY_HELP \
-"The factory name to subscribe to."
+"The factory name to subscribe to. Default value is probed from /etc/os-release."
 
 #define HSM_SO_PIN_HELP \
 "The PKCS#11 security officer pin - HSM only."
@@ -84,6 +84,12 @@ namespace po = boost::program_options;
 
 #define FORCE_HELP \
 "Force registration, removing data from previous execution."
+
+#define DEVICE_API_HELP \
+"The device registration API endpoint URL. eg: https://example.com/v1/devices"
+
+#define OAUTH_API_HELP \
+"The OAuth2 API base URL used for device authorization. eg: https://example.com/oauth"
 
 static void get_factory_tags_info(const string os_release, string &factory,
 				  string &fsrc, string &tag, string &tsrc)
@@ -126,7 +132,8 @@ static void get_factory_tags_info(const string os_release, string &factory,
 }
 
 static void set_default_options(lmp_options &opt, string factory, string tags,
-				po::options_description &desc)
+				po::options_description &desc,
+				po::options_description &advanced)
 {
 	bool prod = false;
 
@@ -136,25 +143,16 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 	desc.add_options()
 
 	("help", "print usage")
-	OPT_DEF_BOOL("use-ostree-server", opt.use_server, true, OSTREE_SRV_HELP)
-	OPT_DEF_BOOL("production,p", opt.production, prod, PRODUCTION_HELP)
-	OPT_DEF_BOOL("start-daemon", opt.start_daemon,true, DAEMON_HELP)
 	OPT_DEF_STR("sota-dir,d", opt.sota_dir, SOTA_DIR, SOTA_DIR_HELP)
-	OPT_STR("device-group,g", opt.device_group, DEVICE_GROUP_HELP)
 	OPT_DEF_STR("factory,f", opt.factory, factory, FACTORY_HELP)
-	OPT_STR("hsm-so-pin,S", opt.hsm_so_pin, HSM_SO_PIN_HELP)
-	OPT_DEF_BOOL("mlock-all,l", opt.mlock, true, MLOCK_HELP)
-	OPT_DEF_BOOL("validate-uuid,v", opt.vuuid, true, VUUID_HELP)
-	OPT_DEF_STR("hwid,i", opt.hwid, HARDWARE_ID, HWID_HELP)
-	OPT_DEF_STR("tags,t", opt.pacman_tags, tags, TAGS_HELP)
-	OPT_STR("api-token,T", opt.api_token, API_TOKEN_HELP)
-	OPT_STR("hsm-module,m", opt.hsm_module, HSM_HELP)
-	OPT_STR("hsm-pin,P", opt.hsm_pin, HSM_PIN_HELP)
-	OPT_STR("uuid,u", opt.uuid, UUID_HELP)
+	OPT_STR("device-group,g", opt.device_group, DEVICE_GROUP_HELP)
 	OPT_STR("name,n", opt.name, NAME_HELP)
-	OPT_DEF_STR("api-token-header,H",
-		    opt.api_token_header, "OSF-TOKEN",API_TOKEN_HDR_HELP)
-	OPT_DEF_BOOL("force", opt.force, false, FORCE_HELP)
+	OPT_DEF_STR("tag,t", opt.pacman_tags, tags, TAG_HELP)
+	OPT_STR("api-token,T", opt.api_token, API_TOKEN_HELP)
+#if !defined DEVICE_API && !defined OAUTH_API
+	OPT_STR("device-api", opt.device_api, DEVICE_API_HELP)
+	OPT_STR("oauth-api", opt.oauth_api, OAUTH_API_HELP)
+#endif
 
 #if defined DOCKER_COMPOSE_APP
 	OPT_STR("apps,a", opt.apps, APPS_HELP)
@@ -172,15 +170,40 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 		    RESTORABLE_APP_HELP)
 #endif
 	;
+
+	advanced.add_options()
+	("help-advanced", "print advanced options")
+	OPT_DEF_STR("api-token-header,H",
+		    opt.api_token_header, "OSF-TOKEN", API_TOKEN_HDR_HELP)
+#if defined DEVICE_API
+	OPT_DEF_STR("device-api", opt.device_api, DEVICE_API, DEVICE_API_HELP)
+#else
+	OPT_STR("device-api", opt.device_api, DEVICE_API_HELP)	
+#endif
+	OPT_DEF_BOOL("force", opt.force, false, FORCE_HELP)
+	OPT_DEF_STR("hwid,i", opt.hwid, HARDWARE_ID, HWID_HELP)
+	OPT_DEF_BOOL("mlock-all,l", opt.mlock, true, MLOCK_HELP)
+#if defined OAUTH_API
+	OPT_DEF_STR("oauth-api", opt.oauth_api, OAUTH_API, OAUTH_API_HELP)
+#else
+	OPT_STR("oauth-api", opt.oauth_api, OAUTH_API_HELP)
+#endif
+	OPT_DEF_BOOL("production,p", opt.production, prod, PRODUCTION_HELP)
+	OPT_DEF_BOOL("start-daemon", opt.start_daemon,true, DAEMON_HELP)
+	OPT_DEF_BOOL("use-ostree-server", opt.use_server, true, OSTREE_SRV_HELP)
+	OPT_STR("uuid,u", opt.uuid, UUID_HELP)
+	OPT_DEF_BOOL("validate-uuid,v", opt.vuuid, true, VUUID_HELP)
+	;
 }
 
 static int parse_command_line(int argc, char **argv,
-			       po::options_description &desc)
+			       po::options_description &desc,
+			       po::options_description &advanced)
 {
 	po::options_description all("lmp-device-register all options");
 	po::variables_map vm;
 
-	all.add(desc);
+	all.add(desc).add(advanced);
 	try {
 		po::store(
 			po::parse_command_line(
@@ -189,8 +212,15 @@ static int parse_command_line(int argc, char **argv,
 				all),
 			vm);
 
+		if (vm.count("help-advanced")) {
+			cout << desc;
+			cout << advanced;
+			cout << "Git Commit " << GIT_COMMIT << endl;
+			return -1;
+		}
 		if (vm.count("help")) {
 			cout << desc;
+			cout << "Use --help-advanced for more options" << endl;
 			cout << "Git Commit " << GIT_COMMIT << endl;
 			return -1;
 		}
@@ -276,6 +306,7 @@ static int get_uuid(lmp_options &opt)
 int options_parse(int argc, char **argv, lmp_options &opt)
 {
 	po::options_description desc("lmp-device-register options");
+	po::options_description advanced("Advanced options");
 	string factory;
 	string fsrc;
 	string tags;
@@ -284,10 +315,10 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 	/* Read from environment or configuration file */
 	get_factory_tags_info(LMP_OS_STR, factory, fsrc, tags, tsrc);
 
-	set_default_options(opt, factory, tags, desc);
+	set_default_options(opt, factory, tags, desc, advanced);
 
 	/* Command line takes precedence over any parameters */
-	if (parse_command_line(argc, argv, desc))
+	if (parse_command_line(argc, argv, desc, advanced))
 		return -1;
 
 	if (opt.factory.empty() || opt.factory == "lmp") {
@@ -333,6 +364,15 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 			return -1;
 		}
 	}
+
+	/* Env var overrides CLI and compile-time default */
+	const char *device_api_env = std::getenv(ENV_DEVICE_API);
+	if (device_api_env != nullptr)
+		opt.device_api = device_api_env;
+
+	const char *oauth_api_env = std::getenv(ENV_OAUTH_BASE);
+	if (oauth_api_env != nullptr)
+		opt.oauth_api = oauth_api_env;
 
 	cout << "PID memory " << (opt.mlock ? "locked" : "unlocked") <<  endl;
 

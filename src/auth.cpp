@@ -30,21 +30,18 @@ static void dump_resp_error(string message, gint64 code, ptree resp)
 }
 
 /* Returns the access_token on success, and empty string on errors */
-static string get_oauth_token(const string &factory, const string &device_uuid)
+static string get_oauth_token(const string &factory, const string &device_uuid,
+			      const string &oauth_url)
 {
-	const char *env = getenv(ENV_OAUTH_BASE);
 	char WHEELS[] = { '|', '/', '-', '\\' };
 	std::map<string, string> headers;
 	string data;
-	string url;
 	ptree json;
-
-	url = env == nullptr ? OAUTH_API : env;
 
 	data = "client_id=" + device_uuid;
 	data += "&scope=" + factory + ":devices:create";
 
-	gint64 code = Curl(url + "/authorization/device/").Post(headers, data, json);
+	gint64 code = Curl(oauth_url + "/authorization/device/").Post(headers, data, json);
 	if (code != 200) {
 		dump_resp_error("Unable to create device authorization request", code, json);
 		return "";
@@ -69,7 +66,7 @@ static string get_oauth_token(const string &factory, const string &device_uuid)
 	int interval = json.get<int>("interval");
 
 	while (true) {
-		gint64 code = Curl(url + "/token/").Post(headers, data, json);
+		gint64 code = Curl(oauth_url + "/token/").Post(headers, data, json);
 
 		if (code == 200)
 			return json.get<string>("access_token");
@@ -109,7 +106,11 @@ int auth_get_http_headers(lmp_options &opt, http_headers &headers)
 	 * https://app.foundries.io/oauth/authorization/device/
 	 */
 	cout << "Foundries providing auth token " << endl;
-	string token = get_oauth_token(opt.factory, opt.uuid);
+	if (opt.oauth_api.empty()) {
+		cerr << "No --oauth-api or --device-api set, cannot authenticate" << endl;
+		return -1;
+	}
+	string token = get_oauth_token(opt.factory, opt.uuid, opt.oauth_api);
 	if (token.empty())
 		return -1;
 	string token_base64;
@@ -122,17 +123,13 @@ int auth_get_http_headers(lmp_options &opt, http_headers &headers)
 }
 
 /* Register device using the oauth token. Token need "devices:create" scope */
-int auth_register_device(http_headers &headers, ptree &device, ptree &resp)
+int auth_register_device(lmp_options &opt, http_headers &headers, ptree &device, ptree &resp)
 {
-	const char *api = std::getenv(ENV_DEVICE_API);
 	stringstream data;
 	gint64 code;
 
-	if (api == nullptr)
-		api = DEVICE_API;
-
 	write_json(data, device);
-	code = Curl(api).Post(headers, data.str(), resp);
+	code = Curl(opt.device_api).Post(headers, data.str(), resp);
 	if (code != 201) {
 		dump_resp_error("Unable to create device", code, resp);
 		return -1;
@@ -141,15 +138,10 @@ int auth_register_device(http_headers &headers, ptree &device, ptree &resp)
 	return 0;
 }
 
-int auth_ping_server(void)
+int auth_ping_server(lmp_options &opt)
 {
-	/* Get the device API from the environment */
-	const char *api = std::getenv(ENV_DEVICE_API);
-	if (api == nullptr)
-		api = DEVICE_API;
-
-	cout << "Using DEVICE_API: " << api << endl;
-	const auto ping_res{Curl(api).PingEndpoint()};
+	cout << "Using DEVICE_API: " << opt.device_api << endl;
+	const auto ping_res{Curl(opt.device_api).PingEndpoint()};
 
 	if (!std::get<0>(ping_res)) {
 		cerr << std::get<1>(ping_res) << endl;
