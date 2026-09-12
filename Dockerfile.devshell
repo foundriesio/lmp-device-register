@@ -1,0 +1,25 @@
+FROM alpine
+
+RUN apk add \
+	alpine-sdk \
+	bash \
+	boost-dev \
+	boost-static \
+	brotli-static \
+	bzip2-static \
+	cmake \
+	curl-dev \
+	curl-static \
+	glib-dev \
+	glib-static \
+	libidn2-static \
+	libintl \
+	libp11-dev \
+	libpsl-static \
+	libunistring-static \
+	nghttp2-static \
+	openssl-dev \
+	openssl-libs-static \
+	zlib-static \
+	xz-static \
+	zstd-static
