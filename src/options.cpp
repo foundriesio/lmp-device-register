@@ -334,16 +334,6 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 		return -1;
 	}
 
-	if (factory.compare(opt.factory))
-		cout << "Factory read from command line " << endl;
-	else
-		cout << "Factory read from " << fsrc << endl;
-
-	if (tags.compare(opt.pacman_tags))
-		cout << "Tags read from command line " << endl;
-	else
-		cout << "Tags read from " << tsrc << endl;
-
 	if (validate_hsm(opt))
 		return -1;
 
