@@ -5,6 +5,8 @@
  */
 #include "device_register.h"
 
+#include <vector>
+
 using boost::property_tree::ptree;
 
 namespace po = boost::program_options;
@@ -91,15 +93,24 @@ namespace po = boost::program_options;
 #define OAUTH_API_HELP \
 "The OAuth2 API base URL used for device authorization. eg: https://example.com/oauth"
 
-static void get_factory_tags_info(const string os_release, string &factory,
-				  string &fsrc, string &tag, string &tsrc)
+struct env_opt {
+	const char *env_name;
+	const char *os_name;
+	string value;
+};
+
+static void get_env_opts_info(const string &os_release,
+			      std::vector<env_opt> &opts)
 {
-	const char *env = std::getenv(ENV_DEVICE_FACTORY);
 	ptree os_info;
 
-	if (env != nullptr) {
-		factory = env;
-		fsrc = "environment";
+	for (env_opt &opt : opts) {
+		const char *env = opt.env_name == nullptr ? nullptr :
+				  std::getenv(opt.env_name);
+
+		if (env != nullptr) {
+			opt.value = env;
+		}
 	}
 
 	if (!boost::filesystem::exists(os_release))
@@ -111,23 +122,17 @@ static void get_factory_tags_info(const string os_release, string &factory,
 		cout << "Can't parse file " << os_release << endl;
 	}
 
-	try {
-		tag = os_info.get<std::string>(OS_FACTORY_TAG);
-		boost::algorithm::erase_all(tag, "\"");
-		tsrc = os_release;
-	} catch (boost::property_tree::ptree_bad_path const &) {
-		cout << "Can't read tag from " << os_release << endl;
-	}
+	for (env_opt &opt : opts) {
+		if (!opt.value.empty() || opt.os_name == nullptr)
+			continue;
 
-	if (!factory.empty())
-		return;
-
-	try {
-		factory = os_info.get<std::string>(OS_FACTORY);
-		boost::algorithm::erase_all(factory, "\"");
-		fsrc = os_release;
-	} catch (boost::property_tree::ptree_bad_path const &) {
-		cout << "Can't read factory from " << os_release << endl;
+		try {
+			opt.value = os_info.get<std::string>(opt.os_name);
+			boost::algorithm::erase_all(opt.value, "\"");
+		} catch (boost::property_tree::ptree_bad_path const &) {
+			cout << "Can't read " << opt.os_name << " from "
+			     << os_release << endl;
+		}
 	}
 }
 
@@ -310,15 +315,15 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 {
 	po::options_description desc("lmp-device-register options");
 	po::options_description advanced("Advanced options");
-	string factory;
-	string fsrc;
-	string tags;
-	string tsrc;
+	std::vector<env_opt> env_opts = {
+		{ ENV_DEVICE_FACTORY, OS_FACTORY},
+		{ nullptr, OS_FACTORY_TAG},
+	};
 
 	/* Read from environment or configuration file */
-	get_factory_tags_info(LMP_OS_STR, factory, fsrc, tags, tsrc);
+	get_env_opts_info(LMP_OS_STR, env_opts);
 
-	set_default_options(opt, factory, tags, desc, advanced);
+	set_default_options(opt, env_opts[0].value, env_opts[1].value, desc, advanced);
 
 	/* Command line takes precedence over any parameters */
 	if (parse_command_line(argc, argv, desc, advanced))
