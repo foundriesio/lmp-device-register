@@ -181,6 +181,9 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 	OPT_STR("device-api", opt.device_api, DEVICE_API_HELP)	
 #endif
 	OPT_DEF_BOOL("force", opt.force, false, FORCE_HELP)
+	OPT_STR("hsm-module,m", opt.hsm_module, HSM_HELP)
+	OPT_STR("hsm-pin,P", opt.hsm_pin, HSM_PIN_HELP)
+	OPT_STR("hsm-so-pin,S", opt.hsm_so_pin, HSM_SO_PIN_HELP)
 	OPT_DEF_STR("hwid,i", opt.hwid, HARDWARE_ID, HWID_HELP)
 	OPT_DEF_BOOL("mlock-all,l", opt.mlock, true, MLOCK_HELP)
 #if defined OAUTH_API
