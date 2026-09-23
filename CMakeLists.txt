@@ -19,6 +19,12 @@ if(PRODUCTION)
     message(STATUS "Enabling production client certificates")
 endif(PRODUCTION)
 
+option(REQUIRE_FACTORY "Require and include a factory during device registration" OFF)
+if(REQUIRE_FACTORY)
+    add_definitions(-DREQUIRE_FACTORY)
+    message(STATUS "Requiring a factory for device registration")
+endif(REQUIRE_FACTORY)
+
 IF (NOT DEFINED HARDWARE_ID)
     message(FATAL_ERROR "Missing required value: HARDWARE_ID")
 ENDIF()

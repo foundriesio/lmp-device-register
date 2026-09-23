@@ -93,6 +93,21 @@ namespace po = boost::program_options;
 #define OAUTH_API_HELP \
 "The OAuth2 API base URL used for device authorization. eg: https://example.com/oauth"
 
+#if defined REQUIRE_FACTORY
+
+#define FACTORY_HELP \
+ "The factory name to subscribe to. Default value is probed from /etc/os-release."
+
+#define factory_opt() OPT_DEF_STR("factory,f", opt.factory, factory, FACTORY_HELP)
+#define default_factory ""
+
+#else
+
+#define factory_opt()
+#define default_factory "fio-device-register"
+
+#endif
+
 struct env_opt {
 	const char *env_name;
 	const char *os_name;
@@ -141,6 +156,7 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 				po::options_description &advanced)
 {
 	bool prod = false;
+	opt.factory = factory;
 
 #if defined PRODUCTION
 	prod = true;
@@ -149,7 +165,7 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 
 	("help", "print usage")
 	OPT_DEF_STR("sota-dir,d", opt.sota_dir, SOTA_DIR, SOTA_DIR_HELP)
-	OPT_DEF_STR("factory,f", opt.factory, factory, FACTORY_HELP)
+	factory_opt()
 	OPT_STR("device-group,g", opt.device_group, DEVICE_GROUP_HELP)
 	OPT_STR("name,n", opt.name, NAME_HELP)
 	OPT_DEF_STR("tag,t", opt.pacman_tags, tags, TAG_HELP)
@@ -316,7 +332,7 @@ int options_parse(int argc, char **argv, lmp_options &opt)
 	po::options_description desc("lmp-device-register options");
 	po::options_description advanced("Advanced options");
 	std::vector<env_opt> env_opts = {
-		{ ENV_DEVICE_FACTORY, OS_FACTORY},
+		{ ENV_DEVICE_FACTORY, OS_FACTORY, default_factory},
 		{ nullptr, OS_FACTORY_TAG},
 	};
 
