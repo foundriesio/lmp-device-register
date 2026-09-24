@@ -177,8 +177,8 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 		    opt.api_token_header, "OSF-TOKEN", API_TOKEN_HDR_HELP)
 #if defined DEVICE_API
 	OPT_DEF_STR("device-api", opt.device_api, DEVICE_API, DEVICE_API_HELP)
-#else
-	OPT_STR("device-api", opt.device_api, DEVICE_API_HELP)	
+#elif defined OAUTH_API
+	OPT_STR("device-api", opt.device_api, DEVICE_API_HELP)
 #endif
 	OPT_DEF_BOOL("force", opt.force, false, FORCE_HELP)
 	OPT_STR("hsm-module,m", opt.hsm_module, HSM_HELP)
@@ -188,7 +188,7 @@ static void set_default_options(lmp_options &opt, string factory, string tags,
 	OPT_DEF_BOOL("mlock-all,l", opt.mlock, true, MLOCK_HELP)
 #if defined OAUTH_API
 	OPT_DEF_STR("oauth-api", opt.oauth_api, OAUTH_API, OAUTH_API_HELP)
-#else
+#elif defined DEVICE_API
 	OPT_STR("oauth-api", opt.oauth_api, OAUTH_API_HELP)
 #endif
 	OPT_DEF_BOOL("production,p", opt.production, prod, PRODUCTION_HELP)
