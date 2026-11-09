@@ -31,7 +31,7 @@ static void dump_resp_error(string message, gint64 code, ptree resp)
 
 /* Returns the access_token on success, and empty string on errors */
 static string get_oauth_token(const string &factory, const string &device_uuid,
-			      const string &oauth_url)
+			      const string &device_name, const string &oauth_url)
 {
 	char WHEELS[] = { '|', '/', '-', '\\' };
 	std::map<string, string> headers;
@@ -47,13 +47,20 @@ static string get_oauth_token(const string &factory, const string &device_uuid,
 		return "";
 	}
 
+	/* Optional in RFC 8628: the URL with the user code already filled in */
+	const auto uri_complete = json.get_optional<string>("verification_uri_complete");
+
 	cout << endl;
 	cout << "----------------------------------------------------------------------------" << endl;
 	cout << "Visit the link below in your browser to authorize this new device. This link" << endl;
 	cout << "will expire in " << (json.get<int>("expires_in") / 60) << " minutes." << endl;
-	cout << "  Device Name: " << device_uuid << endl;
+	cout << "  Device Name: " << device_name << endl;
+	cout << "  Device UUID: " << device_uuid << endl;
 	cout << "  User code: " << json.get<string>("user_code") << endl;
-	cout << "  Browser URL: " << json.get<string>("verification_uri") << endl;
+	if (uri_complete && !uri_complete->empty())
+		cout << "  Browser URL: " << *uri_complete << endl;
+	else
+		cout << "  Browser URL: " << json.get<string>("verification_uri") << endl;
 	cout << endl;
 
 	data = "grant_type=urn:ietf:params:oauth:grant-type:device_code";
@@ -110,7 +117,7 @@ int auth_get_http_headers(lmp_options &opt, http_headers &headers)
 		cerr << "No --oauth-api or --device-api set, cannot authenticate" << endl;
 		return -1;
 	}
-	string token = get_oauth_token(opt.factory, opt.uuid, opt.oauth_api);
+	string token = get_oauth_token(opt.factory, opt.uuid, opt.name, opt.oauth_api);
 	if (token.empty())
 		return -1;
 	string token_base64;
