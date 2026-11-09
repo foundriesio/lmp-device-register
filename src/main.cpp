@@ -401,6 +401,8 @@ int main(int argc, char **argv)
 	set_signals(SIG_DFL);
 
 	cout << "Device is now registered." << endl;
+	/* One line with both identifiers, for scripts that enroll devices */
+	cout << "Registered device: name=" << opt.name << " uuid=" << opt.uuid << endl;
 	if (opt.start_daemon) {
 		cout << "Starting " SOTA_CLIENT " daemon" << endl;
 		spawn("systemctl start " SOTA_CLIENT);
