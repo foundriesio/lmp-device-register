@@ -7,6 +7,8 @@
 #include <device_register.h>
 #include <curl.hpp>
 
+#include <ctime>
+
 namespace b64 = boost::beast::detail::base64;
 using boost::property_tree::ptree;
 
@@ -47,13 +49,15 @@ static string get_oauth_token(const string &factory, const string &device_uuid,
 		return "";
 	}
 
+	const int expires_in = json.get<int>("expires_in");
+	const time_t deadline = time(nullptr) + expires_in;
 	/* Optional in RFC 8628: the URL with the user code already filled in */
 	const auto uri_complete = json.get_optional<string>("verification_uri_complete");
 
 	cout << endl;
 	cout << "----------------------------------------------------------------------------" << endl;
 	cout << "Visit the link below in your browser to authorize this new device. This link" << endl;
-	cout << "will expire in " << (json.get<int>("expires_in") / 60) << " minutes." << endl;
+	cout << "will expire in " << (expires_in / 60) << " minutes." << endl;
 	cout << "  Device Name: " << device_name << endl;
 	cout << "  Device UUID: " << device_uuid << endl;
 	cout << "  User code: " << json.get<string>("user_code") << endl;
@@ -73,6 +77,12 @@ static string get_oauth_token(const string &factory, const string &device_uuid,
 	int interval = json.get<int>("interval");
 
 	while (true) {
+		if (time(nullptr) >= deadline) {
+			cerr << endl << "The user code expired before it was approved." << endl;
+			cerr << "Run the command again to get a new code." << endl;
+			return "";
+		}
+
 		gint64 code = Curl(oauth_url + "/token/").Post(headers, data, json);
 
 		if (code == 200)
@@ -85,10 +95,16 @@ static string get_oauth_token(const string &factory, const string &device_uuid,
 		}
 
 		/* Process */
-		if (json.get<string>("error") == "authorization_pending") {
-			cout << "Waiting for authorization ";
-			cout << WHEELS[i++ % sizeof(WHEELS)] << "\r" << std::flush;
+		const string error = json.get<string>("error", "");
+		if (error == "authorization_pending") {
+			const long left = (deadline - time(nullptr) + 59) / 60;
+			cout << "Waiting for authorization (" << left << " min left) ";
+			cout << WHEELS[i++ % sizeof(WHEELS)] << "  \r" << std::flush;
 			sleep(interval);
+		} else if (error == "expired_token") {
+			cerr << endl << "The user code expired before it was approved." << endl;
+			cerr << "Run the command again to get a new code." << endl;
+			return "";
 		} else {
 			dump_resp_error("Error authorizing device", code, json);
 			return "";
